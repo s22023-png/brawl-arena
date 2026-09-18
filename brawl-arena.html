@@ -3,7 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Brawl Arena Ultimate</title>
+<title>ブロウルアリーナ - 友達対戦対応</title>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@700;900&display=swap');
 *{margin:0;padding:0;box-sizing:border-box;user-select:none;-webkit-user-select:none}
@@ -36,7 +38,7 @@ canvas{display:block;background:#1e2a3a;border-radius:8px;box-shadow:0 0 40px rg
 .brawler-card.locked::after{content:'🔒';position:absolute;top:4px;right:4px;font-size:12px}
 .brawler-icon{width:40px;height:40px;border-radius:50%;margin:0 auto 4px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:900}
 .brawler-name{font-size:11px;font-weight:900}.brawler-rarity{font-size:8px;opacity:.8}.brawler-desc{font-size:8px;opacity:.55;line-height:1.2}
-.rarity-common{color:#b0b0b0}.rarity-rare{color:#54a0ff}.rarity-epic{color:#a55eea}.rarity-legendary{color:#ffd700;text-shadow:0 0 5px #ff6b00}.rarity-mythic{color:#ff006e;text-shadow:0 0 6px #ff006e}
+.rarity-common{color:#b0b0b0}.rarity-rare{color:#54a0ff}.rarity-super_rare{color:#00cec9}.rarity-epic{color:#a55eea}.rarity-mythic{color:#ff006e;text-shadow:0 0 6px #ff006e}.rarity-legendary{color:#ffd700;text-shadow:0 0 5px #ff6b00}.rarity-chromatic{color:#00e5ff;text-shadow:0 0 6px #a55eea}
 .btn{background:linear-gradient(135deg,#00c853,#00e5ff);color:#0a0e17;border:none;padding:10px 24px;font-size:14px;font-weight:900;border-radius:40px;cursor:pointer;font-family:inherit;box-shadow:0 4px 14px rgba(0,200,100,.3)}
 .btn:hover{transform:scale(1.03)}.btn:disabled{opacity:.4;cursor:not-allowed}
 .btn.secondary{background:rgba(255,255,255,.1);color:#fff;box-shadow:none;margin-top:5px}
@@ -162,7 +164,7 @@ canvas{display:block;background:#1e2a3a;border-radius:8px;box-shadow:0 0 40px rg
 <div class="currency trophies">🏆 <span id="trophyCount">0</span></div>
 </div>
 <div id="startMenu" class="menu">
-<div class="title">BRAWL ARENA</div>
+<div class="title">ブロウルアリーナ</div>
 <div class="subtitle">ULTIMATE — ガジェット / ハイパーチャージ / スターパワー対応</div>
 <div class="tab-bar">
 <button class="tab-btn active" data-tab="play">プレイ</button>
@@ -174,9 +176,16 @@ canvas{display:block;background:#1e2a3a;border-radius:8px;box-shadow:0 0 40px rg
 <div id="tabPlay">
 <div class="brawler-select" id="brawlerSelect"></div>
 <div class="info-box">Q:ガジェット　SPACE:スーパー　E:ハイパーチャージ　パワーキューブで強化</div>
+<div class="menu-buttons" style="margin-bottom:6px">
+<button class="btn secondary" id="exportSaveBtn" style="padding:8px 14px;font-size:12px">💾 データ保存</button>
+<button class="btn secondary" id="importSaveBtn" style="padding:8px 14px;font-size:12px">📂 データ読込</button>
+<input type="file" id="importSaveFile" accept=".json,application/json" style="display:none">
+</div>
+<div id="saveStatus" style="font-size:11px;opacity:.7;margin-bottom:6px;min-height:16px"></div>
 <div class="menu-buttons">
 <button class="btn" id="startBtn">カジュアル</button>
 <button class="btn ranked" id="rankedBtn">ランクマッチ</button>
+<button class="btn" id="friendBtn" style="background:linear-gradient(135deg,#a55eea,#00e5ff)">友達対戦</button>
 </div>
 </div>
 <div id="tabSkins" style="display:none">
@@ -216,6 +225,30 @@ canvas{display:block;background:#1e2a3a;border-radius:8px;box-shadow:0 0 40px rg
 <div style="font-size:18px;font-weight:900" id="mmTitle">マッチメイキング中...</div>
 <div style="opacity:.7;font-size:13px" id="mmSub">対戦相手を探しています</div>
 </div></div>
+
+<div id="friendMenu" class="menu hidden" style="z-index:60">
+  <div class="title" style="font-size:28px">友達対戦</div>
+  <div class="subtitle">QRコードを読み取って一緒にプレイ</div>
+  <div id="friendHostPanel" style="text-align:center">
+    <div style="font-size:13px;opacity:.8;margin-bottom:8px">ルームを作成してQRを友達に見せてね</div>
+    <canvas id="qrCanvas" width="200" height="200" style="background:#fff;border-radius:12px;padding:8px"></canvas>
+    <div style="margin:10px 0;font-size:22px;font-weight:900;letter-spacing:3px;color:#00e5ff" id="roomCodeDisplay">----</div>
+    <div style="font-size:12px;opacity:.7" id="friendStatus">接続待機中...</div>
+    <div class="menu-buttons" style="margin-top:12px">
+      <button class="btn" id="createRoomBtn">ルーム作成</button>
+      <button class="btn secondary" id="friendBackBtn">戻る</button>
+    </div>
+  </div>
+  <div id="friendJoinPanel" style="text-align:center;margin-top:16px;border-top:1px solid rgba(255,255,255,.15);padding-top:16px">
+    <div style="font-size:13px;opacity:.8;margin-bottom:8px">または ルームコードを入力</div>
+    <input id="joinCodeInput" type="text" placeholder="ルームコード" maxlength="8"
+      style="padding:10px 16px;border-radius:12px;border:2px solid #00e5ff;background:rgba(0,0,0,.5);color:#fff;font-size:18px;font-weight:900;text-align:center;letter-spacing:2px;width:180px;text-transform:uppercase">
+    <div class="menu-buttons" style="margin-top:10px">
+      <button class="btn gem" id="joinRoomBtn">参加する</button>
+    </div>
+  </div>
+</div>
+
 <div id="gameOverMenu" class="menu hidden" style="z-index:50">
 <div class="title" id="resultTitle">VICTORY!</div>
 <div id="gameOverStats" style="min-width:280px">
@@ -238,14 +271,111 @@ canvas{display:block;background:#1e2a3a;border-radius:8px;box-shadow:0 0 40px rg
 const canvas=document.getElementById('gameCanvas'),ctx=canvas.getContext('2d');
 function resize(){const maxW=Math.min(window.innerWidth-10,1280),maxH=Math.min(window.innerHeight-10,720),r=16/9;let w=maxW,h=maxW/r;if(h>maxH){h=maxH;w=h*r}canvas.width=w;canvas.height=h;canvas.style.width=w+'px';canvas.style.height=h+'px'}
 window.addEventListener('resize',resize);resize();
-const SAVE_KEY='brawlArenaSave_v4';
-let save={coins:1000,gems:100,trophies:0,unlocked:['shelly','colt','bull'],selected:'shelly',skins:{},selectedSkins:{},lastDaily:'',dailyStreak:0,starPowers:{}};
-function loadSave(){try{const r=localStorage.getItem(SAVE_KEY);if(r)save={...save,...JSON.parse(r)}}catch(e){}
-  if(typeof save.coins!=='number'||save.coins<0)save.coins=1000;
-  if(typeof save.gems!=='number'||save.gems<0)save.gems=100;
-  if(!Array.isArray(save.unlocked)||save.unlocked.length===0)save.unlocked=['shelly','colt','bull'];
-  updateCurrencyUI();updateRankBadge()}
-function saveData(){localStorage.setItem(SAVE_KEY,JSON.stringify(save));updateCurrencyUI();updateRankBadge()}
+const SAVE_KEY='brawlArenaSave_v5';
+let save={coins:1000,gems:100,trophies:0,unlocked:['shelly','colt','bull'],selected:'shelly',skins:{},selectedSkins:{},lastDaily:'',dailyStreak:0,starPowers:{},version:5};
+
+function showSaveStatus(msg, ok){
+  var el=document.getElementById('saveStatus');
+  if(!el) return;
+  el.textContent=msg;
+  el.style.color=ok===false?'#e74c3c':(ok===true?'#2ecc71':'#aaa');
+  if(ok===true) setTimeout(function(){ if(el.textContent===msg) el.textContent=''; }, 2500);
+}
+
+function loadSave(){
+  try{
+    var r=localStorage.getItem(SAVE_KEY);
+    // migrate old key
+    if(!r){
+      var old=localStorage.getItem('brawlArenaSave_v4');
+      if(old){ r=old; localStorage.setItem(SAVE_KEY, old); }
+    }
+    if(r){
+      var parsed=JSON.parse(r);
+      save=Object.assign({}, save, parsed);
+    }
+  }catch(e){ console.warn('loadSave', e); }
+  if(typeof save.coins!=='number'||save.coins<0) save.coins=1000;
+  if(typeof save.gems!=='number'||save.gems<0) save.gems=100;
+  if(typeof save.trophies!=='number'||save.trophies<0) save.trophies=0;
+  if(!Array.isArray(save.unlocked)||save.unlocked.length===0) save.unlocked=['shelly','colt','bull'];
+  if(!save.skins||typeof save.skins!=='object') save.skins={};
+  if(!save.selectedSkins||typeof save.selectedSkins!=='object') save.selectedSkins={};
+  if(!save.starPowers||typeof save.starPowers!=='object') save.starPowers={};
+  try{ updateCurrencyUI(); updateRankBadge(); }catch(e){}
+  showSaveStatus('データ読込済み', true);
+}
+
+function saveData(){
+  try{
+    save.version=5;
+    save.savedAt=new Date().toISOString();
+    localStorage.setItem(SAVE_KEY, JSON.stringify(save));
+    // also keep v4 key for compatibility
+    try{ localStorage.setItem('brawlArenaSave_v4', JSON.stringify(save)); }catch(e2){}
+    updateCurrencyUI();
+    try{ updateRankBadge(); }catch(e){}
+    return true;
+  }catch(e){
+    console.error('saveData', e);
+    showSaveStatus('保存失敗（容量不足の可能性）', false);
+    return false;
+  }
+}
+
+function exportSaveFile(){
+  try{
+    saveData();
+    var data=JSON.stringify(save, null, 2);
+    var blob=new Blob([data], {type:'application/json'});
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement('a');
+    a.href=url;
+    a.download='brawl-arena-save-'+new Date().toISOString().slice(0,10)+'.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showSaveStatus('セーブファイルをダウンロードしました', true);
+  }catch(e){
+    alert('書き出し失敗: '+e.message);
+  }
+}
+
+function importSaveFile(file){
+  if(!file) return;
+  var reader=new FileReader();
+  reader.onload=function(ev){
+    try{
+      var parsed=JSON.parse(ev.target.result);
+      if(!parsed||typeof parsed!=='object') throw new Error('形式が不正です');
+      // merge safely
+      if(typeof parsed.coins==='number') save.coins=parsed.coins;
+      if(typeof parsed.gems==='number') save.gems=parsed.gems;
+      if(typeof parsed.trophies==='number') save.trophies=parsed.trophies;
+      if(Array.isArray(parsed.unlocked)) save.unlocked=parsed.unlocked;
+      if(parsed.selected) save.selected=parsed.selected;
+      if(parsed.skins) save.skins=parsed.skins;
+      if(parsed.selectedSkins) save.selectedSkins=parsed.selectedSkins;
+      if(parsed.starPowers) save.starPowers=parsed.starPowers;
+      if(parsed.lastDaily) save.lastDaily=parsed.lastDaily;
+      if(typeof parsed.dailyStreak==='number') save.dailyStreak=parsed.dailyStreak;
+      saveData();
+      selectedBrawler=save.selected||'shelly';
+      if(!save.unlocked.includes(selectedBrawler)) selectedBrawler=save.unlocked[0]||'shelly';
+      try{ renderBrawlerSelect(); }catch(e){}
+      try{ updateCurrencyUI(); updateRankBadge(); updateDailyUI(); }catch(e){}
+      showSaveStatus('データを読み込みました', true);
+      alert('セーブデータを読み込みました！\\nコイン:'+save.coins+' ジェム:'+save.gems+' 解放:'+save.unlocked.length+'体');
+    }catch(err){
+      alert('読込失敗: '+err.message);
+      showSaveStatus('読込失敗', false);
+    }
+  };
+  reader.readAsText(file);
+}
+
+
 function updateCurrencyUI(){document.getElementById('coinCount').textContent=save.coins;document.getElementById('gemCount').textContent=save.gems;document.getElementById('trophyCount').textContent=save.trophies}
 const RANKS=[{name:'ブロンズ I',min:0,color:'#cd7f32'},{name:'ブロンズ II',min:50,color:'#cd7f32'},{name:'ブロンズ III',min:100,color:'#cd7f32'},{name:'シルバー I',min:160,color:'#c0c0c0'},{name:'シルバー II',min:230,color:'#c0c0c0'},{name:'シルバー III',min:300,color:'#c0c0c0'},{name:'ゴールド I',min:400,color:'#ffd700'},{name:'ゴールド II',min:520,color:'#ffd700'},{name:'ゴールド III',min:650,color:'#ffd700'},{name:'ダイヤ I',min:800,color:'#00e5ff'},{name:'ダイヤ II',min:1000,color:'#00e5ff'},{name:'ダイヤ III',min:1200,color:'#00e5ff'},{name:'ミシック',min:1500,color:'#a55eea'},{name:'レジェンド',min:2000,color:'#ff6b00'},{name:'マスター',min:2800,color:'#ff006e'}];
 function getRank(t){let r=RANKS[0];for(const rank of RANKS)if(t>=rank.min)r=rank;return r}
@@ -253,45 +383,155 @@ function updateRankBadge(){const r=getRank(save.trophies);const el=document.getE
 
 // ===== BRAWLERS (16体) + Gadget / Hyper / StarPower =====
 const BRAWLERS={
-shelly:{name:'シェリー',rarity:'common',color:'#ff6b6b',accent:'#ee5a24',maxHp:3600,speed:2.4,reload:.55,damage:300,range:380,bulletSpeed:11,spread:.28,bullets:5,superCharge:8,size:22,desc:'ショットガン',
+// === Starting / Common ===
+shelly:{name:'シェリー',rarity:'common',color:'#ff6b6b',accent:'#ee5a24',maxHp:3600,speed:2.4,reload:.55,damage:300,range:380,bulletSpeed:11,spread:.28,bullets:5,superCharge:8,size:22,desc:'ショットガン',atkType:'spread',
 gadget:{name:'ダッシュ',cd:8,effect:'dash'},starPower:{name:'強化弾',desc:'ダメージ+15%'},hyper:{name:'スーパーシェル',mult:1.6,dur:5}},
-colt:{name:'コルト',rarity:'common',color:'#54a0ff',accent:'#2e86de',maxHp:2800,speed:2.6,reload:.18,damage:170,range:520,bulletSpeed:14,spread:.04,bullets:1,superCharge:12,size:20,desc:'連射',
-gadget:{name:'スピードブースト',cd:10,effect:'speed'},starPower:{name:'精密射撃',desc:'射程+10%'},hyper:{name:'ラピッドファイア',mult:1.5,dur:4}},
-bull:{name:'ブル',rarity:'rare',color:'#5f27cd',accent:'#341f97',maxHp:5200,speed:2.1,reload:.7,damage:400,range:280,bulletSpeed:10,spread:.15,bullets:3,superCharge:6,size:26,desc:'タンク',
-gadget:{name:'シールド',cd:12,effect:'shield'},starPower:{name:'タフネス',desc:'HP+12%'},hyper:{name:'ブルチャージ',mult:1.7,dur:4}},
-nita:{name:'ニタ',rarity:'rare',color:'#f39c12',accent:'#d35400',maxHp:3400,speed:2.35,reload:.45,damage:260,range:360,bulletSpeed:10,spread:.12,bullets:2,superCharge:9,size:22,desc:'クマ召喚',
+nita:{name:'ニタ',rarity:'rare',color:'#f39c12',accent:'#d35400',maxHp:3400,speed:2.35,reload:.45,damage:260,range:360,bulletSpeed:10,spread:.12,bullets:2,superCharge:9,size:22,desc:'クマ召喚',atkType:'projectile',
 gadget:{name:'クマ強化',cd:14,effect:'bearboost'},starPower:{name:'クマHP+',desc:'クマ体力増加'},hyper:{name:'暴走クマ',mult:1.5,dur:6}},
-poco:{name:'ポコ',rarity:'rare',color:'#9b59b6',accent:'#8e44ad',maxHp:3800,speed:2.25,reload:.6,damage:240,range:400,bulletSpeed:9,spread:.25,bullets:1,superCharge:8,size:23,desc:'範囲回復',
-gadget:{name:'緊急ヒール',cd:11,effect:'heal'},starPower:{name:'メロディ',desc:'回復量+20%'},hyper:{name:'グランドフィナーレ',mult:1.5,dur:5}},
-jessie:{name:'ジェシー',rarity:'epic',color:'#e74c3c',accent:'#c0392b',maxHp:3000,speed:2.3,reload:.5,damage:280,range:450,bulletSpeed:12,spread:.06,bullets:1,superCharge:10,size:21,desc:'タレット',
+colt:{name:'コルト',rarity:'common',color:'#54a0ff',accent:'#2e86de',maxHp:2800,speed:2.6,reload:.18,damage:170,range:520,bulletSpeed:14,spread:.04,bullets:1,superCharge:12,size:20,desc:'連射',atkType:'laser',
+gadget:{name:'スピードブースト',cd:10,effect:'speed'},starPower:{name:'精密射撃',desc:'射程+10%'},hyper:{name:'ラピッドファイア',mult:1.5,dur:4}},
+bull:{name:'ブル',rarity:'rare',color:'#5f27cd',accent:'#341f97',maxHp:5200,speed:2.1,reload:.7,damage:400,range:280,bulletSpeed:10,spread:.15,bullets:3,superCharge:6,size:26,desc:'タンク',atkType:'spread',
+gadget:{name:'シールド',cd:12,effect:'shield'},starPower:{name:'タフネス',desc:'HP+12%'},hyper:{name:'ブルチャージ',mult:1.7,dur:4}},
+jessie:{name:'ジェシー',rarity:'epic',color:'#e74c3c',accent:'#c0392b',maxHp:3000,speed:2.3,reload:.5,damage:280,range:450,bulletSpeed:12,spread:.06,bullets:1,superCharge:10,size:21,desc:'跳弾タレット',atkType:'bounce',
 gadget:{name:'タレット修理',cd:13,effect:'repair'},starPower:{name:'ショック',desc:'弾が跳ねる'},hyper:{name:'オーバーロード',mult:1.6,dur:5}},
-dynamike:{name:'ダイナマイク',rarity:'epic',color:'#f1c40f',accent:'#f39c12',maxHp:2600,speed:2.5,reload:.85,damage:480,range:480,bulletSpeed:7,spread:.2,bullets:1,superCharge:7,size:20,desc:'爆弾',
+brock:{name:'ブロック',rarity:'rare',color:'#e67e22',accent:'#d35400',maxHp:2700,speed:2.4,reload:.9,damage:520,range:500,bulletSpeed:8,spread:.05,bullets:1,superCharge:8,size:21,desc:'ロケット',atkType:'rocket',
+gadget:{name:'ロケット雨',cd:12,effect:'fastexplode'},starPower:{name:'爆発範囲+',desc:'爆発大'},hyper:{name:'メガロケット',mult:1.7,dur:4}},
+dynamike:{name:'ダイナマイク',rarity:'epic',color:'#f1c40f',accent:'#f39c12',maxHp:2600,speed:2.5,reload:.85,damage:480,range:480,bulletSpeed:7,spread:.2,bullets:1,superCharge:7,size:20,desc:'爆弾',atkType:'lob',
 gadget:{name:'速爆発',cd:9,effect:'fastexplode'},starPower:{name:'大火傷',desc:'爆発範囲+'},hyper:{name:'メガボム',mult:1.8,dur:4}},
-crow:{name:'クロウ',rarity:'legendary',color:'#2c3e50',accent:'#1a252f',maxHp:2400,speed:2.9,reload:.35,damage:140,range:420,bulletSpeed:13,spread:.18,bullets:3,superCharge:11,size:18,desc:'毒',
-gadget:{name:'毒強化',cd:10,effect:'poisonboost'},starPower:{name:'猛毒',desc:'毒ダメージ+'},hyper:{name:'カラスの嵐',mult:1.6,dur:5}},
-leon:{name:'レオン',rarity:'legendary',color:'#27ae60',accent:'#1e8449',maxHp:3200,speed:2.7,reload:.4,damage:220,range:400,bulletSpeed:12,spread:.1,bullets:2,superCharge:10,size:20,desc:'透明',
-gadget:{name:'短縮透明',cd:12,effect:'shortinvis'},starPower:{name:'残像',desc:'透明時間+'},hyper:{name:'シャドウストライク',mult:1.7,dur:5}},
-mortis:{name:'モーティス',rarity:'legendary',color:'#8e44ad',accent:'#6c3483',maxHp:3600,speed:2.8,reload:.9,damage:520,range:220,bulletSpeed:16,spread:.05,bullets:1,superCharge:5,size:21,desc:'ダッシュ',
-gadget:{name:'吸血',cd:11,effect:'lifesteal'},starPower:{name:'コウモリ',desc:'ダッシュ距離+'},hyper:{name:'ブラッドラスト',mult:1.8,dur:4}},
-spike:{name:'スパイク',rarity:'mythic',color:'#2ecc71',accent:'#27ae60',maxHp:3000,speed:2.4,reload:.7,damage:320,range:400,bulletSpeed:9,spread:.3,bullets:1,superCharge:9,size:22,desc:'トゲ爆弾',
-gadget:{name:'トゲフィールド',cd:13,effect:'spikefield'},starPower:{name:'増殖',desc:'トゲ数+'},hyper:{name:'トゲの嵐',mult:1.7,dur:5}},
-edgar:{name:'エドガー',rarity:'epic',color:'#e91e63',accent:'#c2185b',maxHp:3300,speed:2.7,reload:.35,damage:280,range:200,bulletSpeed:14,spread:.08,bullets:1,superCharge:7,size:20,desc:'ジャンプ接近',
+bo:{name:'ボー',rarity:'epic',color:'#27ae60',accent:'#1e8449',maxHp:3300,speed:2.35,reload:.7,damage:300,range:420,bulletSpeed:11,spread:.15,bullets:3,superCharge:9,size:22,desc:'矢3本',atkType:'projectile',
+gadget:{name:'トラップ',cd:14,effect:'spikefield'},starPower:{name:'矢強化',desc:'ダメージ+'},hyper:{name:'嵐の矢',mult:1.5,dur:5}},
+elprimo:{name:'エル・プリモ',rarity:'rare',color:'#3498db',accent:'#2980b9',maxHp:5600,speed:2.2,reload:.8,damage:380,range:200,bulletSpeed:12,spread:.2,bullets:2,superCharge:5,size:28,desc:'近接拳',atkType:'melee',
+gadget:{name:'ジャンプ',cd:10,effect:'jump'},starPower:{name:'鉄拳',desc:'近接+'},hyper:{name:'フライングエルボー',mult:1.8,dur:4}},
+barley:{name:'バーリー',rarity:'rare',color:'#9b59b6',accent:'#8e44ad',maxHp:2500,speed:2.4,reload:.8,damage:340,range:450,bulletSpeed:7,spread:.1,bullets:1,superCharge:8,size:20,desc:'瓶投擲',atkType:'lob',
+gadget:{name:'毒瓶',cd:11,effect:'poisonboost'},starPower:{name:'残火',desc:'火傷'},hyper:{name:'ボトルストーム',mult:1.6,dur:5}},
+poco:{name:'ポコ',rarity:'rare',color:'#9b59b6',accent:'#8e44ad',maxHp:3800,speed:2.25,reload:.6,damage:240,range:400,bulletSpeed:9,spread:.25,bullets:1,superCharge:8,size:23,desc:'音波',atkType:'wave',
+gadget:{name:'緊急ヒール',cd:11,effect:'heal'},starPower:{name:'メロディ',desc:'回復量+20%'},hyper:{name:'グランドフィナーレ',mult:1.5,dur:5}},
+rosa:{name:'ローザ',rarity:'rare',color:'#e91e63',accent:'#c2185b',maxHp:4800,speed:2.2,reload:.55,damage:280,range:250,bulletSpeed:11,spread:.18,bullets:3,superCharge:7,size:24,desc:'植物タンク',atkType:'spread',
+gadget:{name:'シールド',cd:12,effect:'shield'},starPower:{name:'棘',desc:'反射'},hyper:{name:'植物の壁',mult:1.5,dur:5}},
+// === Super Rare / Epic ===
+rico:{name:'リコ',rarity:'super_rare',color:'#1abc9c',accent:'#16a085',maxHp:2600,speed:2.5,reload:.4,damage:200,range:480,bulletSpeed:13,spread:.05,bullets:1,superCharge:10,size:19,desc:'跳弾',atkType:'bounce',
+gadget:{name:'加速弾',cd:10,effect:'speed'},starPower:{name:'跳弾+',desc:'バウンス増'},hyper:{name:'ピンボール',mult:1.5,dur:4}},
+darryl:{name:'ダリル',rarity:'super_rare',color:'#34495e',accent:'#2c3e50',maxHp:4600,speed:2.15,reload:.65,damage:320,range:300,bulletSpeed:10,spread:.2,bullets:4,superCharge:6,size:25,desc:'樽ロール',atkType:'spread',
+gadget:{name:'ダッシュ',cd:9,effect:'dash'},starPower:{name:'鋼鉄',desc:'HP+'},hyper:{name:'ダブルロール',mult:1.6,dur:4}},
+penny:{name:'ペニー',rarity:'super_rare',color:'#e67e22',accent:'#d35400',maxHp:3000,speed:2.35,reload:.55,damage:260,range:420,bulletSpeed:11,spread:.1,bullets:1,superCharge:9,size:20,desc:'砲台',atkType:'projectile',
+gadget:{name:'修理',cd:13,effect:'repair'},starPower:{name:'砲強化',desc:'ダメ+'},hyper:{name:'大砲乱射',mult:1.5,dur:5}},
+carl:{name:'カール',rarity:'super_rare',color:'#f39c12',accent:'#e67e22',maxHp:3400,speed:2.3,reload:.7,damage:340,range:380,bulletSpeed:9,spread:.08,bullets:1,superCharge:8,size:22,desc:'ツルはし',atkType:'projectile',
+gadget:{name:'ダッシュ',cd:10,effect:'dash'},starPower:{name:'回転',desc:'軌道円'},hyper:{name:'採掘ラッシュ',mult:1.6,dur:4}},
+jacky:{name:'ジャッキー',rarity:'super_rare',color:'#e74c3c',accent:'#c0392b',maxHp:4400,speed:2.25,reload:.6,damage:360,range:220,bulletSpeed:10,spread:.3,bullets:1,superCharge:7,size:24,desc:'ドリル',atkType:'melee',
+gadget:{name:'シールド',cd:11,effect:'shield'},starPower:{name:'振動',desc:'範囲+'},hyper:{name:'地震ドリル',mult:1.7,dur:4}},
+// === Epic ===
+piper:{name:'パイパー',rarity:'epic',color:'#fd79a8',accent:'#e84393',maxHp:2300,speed:2.55,reload:.8,damage:420,range:580,bulletSpeed:14,spread:.03,bullets:1,superCharge:10,size:18,desc:'遠距離狙撃',atkType:'sniper',
+gadget:{name:'ジャンプ',cd:12,effect:'jump'},starPower:{name:'Ambush',desc:'遠距離+'},hyper:{name:'ホーミング',mult:1.5,dur:4}},
+pam:{name:'パム',rarity:'epic',color:'#e17055',accent:'#d63031',maxHp:4200,speed:2.3,reload:.5,damage:180,range:360,bulletSpeed:11,spread:.25,bullets:5,superCharge:9,size:24,desc:'散弾ヒーラー',atkType:'spread',
+gadget:{name:'ヒール',cd:12,effect:'heal'},starPower:{name:'ママの抱擁',desc:'回復+'},hyper:{name:'ツール箱',mult:1.5,dur:5}},
+frank:{name:'フランク',rarity:'epic',color:'#636e72',accent:'#2d3436',maxHp:6200,speed:1.95,reload:1.0,damage:600,range:280,bulletSpeed:9,spread:.15,bullets:1,superCharge:6,size:30,desc:'ハンマー',atkType:'melee',
+gadget:{name:'スタン',cd:14,effect:'shield'},starPower:{name:'衝撃波',desc:'範囲'},hyper:{name:'激怒',mult:1.8,dur:4}},
+bibi:{name:'ビビ',rarity:'epic',color:'#a29bfe',accent:'#6c5ce7',maxHp:3800,speed:2.45,reload:.6,damage:400,range:320,bulletSpeed:12,spread:.08,bullets:1,superCharge:8,size:22,desc:'バット',atkType:'melee',
+gadget:{name:'ダッシュ',cd:9,effect:'dash'},starPower:{name:'ホームラン',desc:'ノックバック'},hyper:{name:'満塁',mult:1.6,dur:4}},
+bea:{name:'ビー',rarity:'epic',color:'#fdcb6e',accent:'#f39c12',maxHp:2400,speed:2.5,reload:.7,damage:350,range:500,bulletSpeed:13,spread:.04,bullets:1,superCharge:10,size:19,desc:'蜂チャージ',atkType:'sniper',
+gadget:{name:'毒蜂',cd:11,effect:'poisonboost'},starPower:{name:'マーク',desc:'追加ダメ'},hyper:{name:'蜂の巣',mult:1.5,dur:5}},
+nani:{name:'ナーニ',rarity:'epic',color:'#00b894',accent:'#00a085',maxHp:2600,speed:2.5,reload:.75,damage:480,range:520,bulletSpeed:10,spread:.05,bullets:1,superCharge:9,size:20,desc:'誘導弾',atkType:'rocket',
+gadget:{name:'テレポート',cd:13,effect:'teleport'},starPower:{name:'追尾+',desc:'誘導強'},hyper:{name:'ピーク爆発',mult:1.7,dur:4}},
+edgar:{name:'エドガー',rarity:'epic',color:'#e91e63',accent:'#c2185b',maxHp:3300,speed:2.7,reload:.35,damage:280,range:200,bulletSpeed:14,spread:.08,bullets:1,superCharge:7,size:20,desc:'ジャンプ接近',atkType:'melee',
 gadget:{name:'ジャンプ',cd:8,effect:'jump'},starPower:{name:'激怒',desc:'低HPで攻撃力+'},hyper:{name:'レイジ',mult:1.6,dur:4}},
-amber:{name:'アンバー',rarity:'legendary',color:'#ff5722',accent:'#e64a19',maxHp:2900,speed:2.5,reload:.25,damage:160,range:380,bulletSpeed:10,spread:.15,bullets:1,superCharge:10,size:20,desc:'炎放射',
+griff:{name:'グリフ',rarity:'epic',color:'#795548',accent:'#5d4037',maxHp:3500,speed:2.3,reload:.65,damage:260,range:360,bulletSpeed:10,spread:.2,bullets:3,superCharge:8,size:23,desc:'コイン弾',atkType:'spread',
+gadget:{name:'金庫防御',cd:11,effect:'shield'},starPower:{name:'両替',desc:'コイン回復'},hyper:{name:'マネーレイン',mult:1.6,dur:5}},
+grom:{name:'グロム',rarity:'epic',color:'#74b9ff',accent:'#0984e3',maxHp:2800,speed:2.4,reload:.85,damage:500,range:460,bulletSpeed:7,spread:.1,bullets:1,superCharge:8,size:21,desc:'バウンド爆弾',atkType:'lob',
+gadget:{name:'速爆',cd:10,effect:'fastexplode'},starPower:{name:'分裂',desc:'着弾分裂'},hyper:{name:'爆撃',mult:1.7,dur:4}},
+// === Mythic ===
+mortis:{name:'モーティス',rarity:'mythic',color:'#8e44ad',accent:'#6c3483',maxHp:3600,speed:2.8,reload:.9,damage:520,range:220,bulletSpeed:16,spread:.05,bullets:1,superCharge:5,size:21,desc:'ダッシュ',atkType:'melee',
+gadget:{name:'吸血',cd:11,effect:'lifesteal'},starPower:{name:'コウモリ',desc:'ダッシュ距離+'},hyper:{name:'ブラッドラスト',mult:1.8,dur:4}},
+tara:{name:'タラ',rarity:'mythic',color:'#6c5ce7',accent:'#5f27cd',maxHp:3000,speed:2.4,reload:.7,damage:220,range:400,bulletSpeed:11,spread:.2,bullets:3,superCharge:9,size:21,desc:'カード3枚',atkType:'spread',
+gadget:{name:'影',cd:12,effect:'shortinvis'},starPower:{name:'黒弾',desc:'ダメ+'},hyper:{name:'ブラックホール',mult:1.6,dur:5}},
+gene:{name:'ジーン',rarity:'mythic',color:'#00cec9',accent:'#00b894',maxHp:3200,speed:2.35,reload:.65,damage:300,range:400,bulletSpeed:10,spread:.1,bullets:1,superCharge:10,size:21,desc:'魔法弾',atkType:'projectile',
+gadget:{name:'引き寄せ',cd:14,effect:'teleport'},starPower:{name:'魔法+',desc:'ダメ+'},hyper:{name:'ランプ',mult:1.5,dur:5}},
+max:{name:'マックス',rarity:'mythic',color:'#fd79a8',accent:'#e84393',maxHp:3000,speed:3.0,reload:.3,damage:160,range:380,bulletSpeed:13,spread:.1,bullets:2,superCharge:9,size:20,desc:'超高速',atkType:'laser',
+gadget:{name:'スピード',cd:8,effect:'speed'},starPower:{name:'疾走',desc:'移動+'},hyper:{name:'ソニック',mult:1.5,dur:4}},
+byron:{name:'バイロン',rarity:'mythic',color:'#636e72',accent:'#2d3436',maxHp:2600,speed:2.45,reload:.55,damage:200,range:460,bulletSpeed:12,spread:.06,bullets:1,superCharge:10,size:20,desc:'毒注射',atkType:'poison',
+gadget:{name:'毒強化',cd:10,effect:'poisonboost'},starPower:{name:'猛毒',desc:'毒+'},hyper:{name:'感染',mult:1.5,dur:5}},
+squeak:{name:'スクィーク',rarity:'mythic',color:'#55efc4',accent:'#00b894',maxHp:2900,speed:2.4,reload:.8,damage:400,range:420,bulletSpeed:8,spread:.1,bullets:1,superCharge:8,size:20,desc:'粘着弾',atkType:'lob',
+gadget:{name:'粘着',cd:11,effect:'spikefield'},starPower:{name:'ねばねば',desc:'減速'},hyper:{name:'ビッグスライム',mult:1.6,dur:4}},
+buzz:{name:'バズ',rarity:'mythic',color:'#0984e3',accent:'#0652DD',maxHp:4000,speed:2.35,reload:.7,damage:320,range:300,bulletSpeed:11,spread:.12,bullets:1,superCharge:7,size:23,desc:'フック',atkType:'projectile',
+gadget:{name:'ダッシュ',cd:10,effect:'dash'},starPower:{name:'フック+',desc:'引き寄せ'},hyper:{name:'救助',mult:1.6,dur:4}},
+ash:{name:'アッシュ',rarity:'mythic',color:'#b2bec3',accent:'#636e72',maxHp:4500,speed:2.2,reload:.6,damage:300,range:280,bulletSpeed:10,spread:.15,bullets:2,superCharge:7,size:25,desc:'怒りのタンク',atkType:'spread',
+gadget:{name:'シールド',cd:11,effect:'shield'},starPower:{name:'激怒',desc:'ダメ+'},hyper:{name:'ラットラッシュ',mult:1.7,dur:4}},
+// === Legendary ===
+spike:{name:'スパイク',rarity:'legendary',color:'#2ecc71',accent:'#27ae60',maxHp:3000,speed:2.4,reload:.7,damage:320,range:400,bulletSpeed:9,spread:.3,bullets:1,superCharge:9,size:22,desc:'トゲ爆弾',atkType:'lob',
+gadget:{name:'トゲフィールド',cd:13,effect:'spikefield'},starPower:{name:'増殖',desc:'トゲ数+'},hyper:{name:'トゲの嵐',mult:1.7,dur:5}},
+crow:{name:'クロウ',rarity:'legendary',color:'#2c3e50',accent:'#1a252f',maxHp:2400,speed:2.9,reload:.35,damage:140,range:420,bulletSpeed:13,spread:.18,bullets:3,superCharge:11,size:18,desc:'毒ナイフ',atkType:'poison',
+gadget:{name:'毒強化',cd:10,effect:'poisonboost'},starPower:{name:'猛毒',desc:'毒ダメージ+'},hyper:{name:'カラスの嵐',mult:1.6,dur:5}},
+leon:{name:'レオン',rarity:'legendary',color:'#27ae60',accent:'#1e8449',maxHp:3200,speed:2.7,reload:.4,damage:220,range:400,bulletSpeed:12,spread:.1,bullets:2,superCharge:10,size:20,desc:'透明',atkType:'projectile',
+gadget:{name:'短縮透明',cd:12,effect:'shortinvis'},starPower:{name:'残像',desc:'透明時間+'},hyper:{name:'シャドウストライク',mult:1.7,dur:5}},
+sandy:{name:'サンディ',rarity:'legendary',color:'#ffeaa7',accent:'#fdcb6e',maxHp:3400,speed:2.5,reload:.55,damage:280,range:380,bulletSpeed:11,spread:.15,bullets:2,superCharge:9,size:21,desc:'砂の眠気',atkType:'wave',
+gadget:{name:'砂嵐',cd:13,effect:'spikefield'},starPower:{name:'眠気',desc:'減速'},hyper:{name:'砂の夢',mult:1.5,dur:5}},
+amber:{name:'アンバー',rarity:'legendary',color:'#ff5722',accent:'#e64a19',maxHp:2900,speed:2.5,reload:.25,damage:160,range:380,bulletSpeed:10,spread:.15,bullets:1,superCharge:10,size:20,desc:'炎放射',atkType:'flame',
 gadget:{name:'炎の壁',cd:12,effect:'firewall'},starPower:{name:'燃焼',desc:'炎持続+'},hyper:{name:'インフェルノ',mult:1.7,dur:5}},
-surge:{name:'サージ',rarity:'mythic',color:'#00bcd4',accent:'#0097a7',maxHp:3100,speed:2.3,reload:.5,damage:300,range:420,bulletSpeed:11,spread:.1,bullets:1,superCharge:8,size:22,desc:'進化型',
+meg:{name:'メグ',rarity:'legendary',color:'#e84393',accent:'#d63031',maxHp:3100,speed:2.4,reload:.45,damage:240,range:400,bulletSpeed:12,spread:.1,bullets:2,superCharge:9,size:21,desc:'メカ変形',atkType:'laser',
+gadget:{name:'シールド',cd:11,effect:'shield'},starPower:{name:'メカHP',desc:'変形強化'},hyper:{name:'メガメカ',mult:1.6,dur:5}},
+surge:{name:'サージ',rarity:'legendary',color:'#00bcd4',accent:'#0097a7',maxHp:3100,speed:2.3,reload:.5,damage:300,range:420,bulletSpeed:11,spread:.1,bullets:1,superCharge:8,size:22,desc:'進化型',atkType:'laser',
 gadget:{name:'テレポート',cd:14,effect:'teleport'},starPower:{name:'急速進化',desc:'進化速度+'},hyper:{name:'オーバークロック',mult:1.6,dur:5}},
-belle:{name:'ベル',rarity:'epic',color:'#ffc107',accent:'#ff8f00',maxHp:2700,speed:2.5,reload:.6,damage:350,range:550,bulletSpeed:15,spread:.03,bullets:1,superCharge:11,size:19,desc:'狙撃マーク',
+// === Chromatic / Extra ===
+belle:{name:'ベル',rarity:'chromatic',color:'#ffc107',accent:'#ff8f00',maxHp:2700,speed:2.5,reload:.6,damage:350,range:550,bulletSpeed:15,spread:.03,bullets:1,superCharge:11,size:19,desc:'狙撃マーク',atkType:'sniper',
 gadget:{name:'マーク爆発',cd:10,effect:'markboom'},starPower:{name:'精密',desc:'クリティカル'},hyper:{name:'ゴールドラッシュ',mult:1.5,dur:4}},
-griff:{name:'グリフ',rarity:'rare',color:'#795548',accent:'#5d4037',maxHp:3500,speed:2.3,reload:.65,damage:260,range:360,bulletSpeed:10,spread:.2,bullets:3,superCharge:8,size:23,desc:'コイン弾',
-gadget:{name:'金庫防御',cd:11,effect:'shield'},starPower:{name:'両替',desc:'コイン回復'},hyper:{name:'マネーレイン',mult:1.6,dur:5}}
+stu:{name:'ステュー',rarity:'chromatic',color:'#ff7675',accent:'#d63031',maxHp:2800,speed:2.6,reload:.5,damage:240,range:360,bulletSpeed:11,spread:.1,bullets:2,superCharge:6,size:20,desc:'ブースト弾',atkType:'projectile',
+gadget:{name:'ダッシュ',cd:8,effect:'dash'},starPower:{name:'ニトロ',desc:'速度+'},hyper:{name:'バースト',mult:1.6,dur:4}},
+ruffs:{name:'ラフス',rarity:'chromatic',color:'#0984e3',accent:'#0652DD',maxHp:3000,speed:2.4,reload:.55,damage:260,range:420,bulletSpeed:12,spread:.08,bullets:2,superCharge:9,size:21,desc:'空軍',atkType:'projectile',
+gadget:{name:'補給',cd:12,effect:'heal'},starPower:{name:'昇進',desc:'バフ'},hyper:{name:'空爆',mult:1.5,dur:5}},
+lou:{name:'ルー',rarity:'chromatic',color:'#74b9ff',accent:'#0984e3',maxHp:3100,speed:2.4,reload:.6,damage:280,range:400,bulletSpeed:10,spread:.12,bullets:2,superCharge:9,size:21,desc:'氷結',atkType:'projectile',
+gadget:{name:'氷壁',cd:12,effect:'shield'},starPower:{name:'凍結',desc:'減速'},hyper:{name:'吹雪',mult:1.5,dur:5}},
+fang:{name:'ファング',rarity:'chromatic',color:'#e17055',accent:'#d63031',maxHp:3800,speed:2.55,reload:.5,damage:340,range:300,bulletSpeed:13,spread:.08,bullets:1,superCharge:7,size:22,desc:'キック連撃',atkType:'melee',
+gadget:{name:'ダッシュ',cd:9,effect:'dash'},starPower:{name:'連蹴',desc:'追加ヒット'},hyper:{name:'ラウンドハウス',mult:1.7,dur:4}},
+eve:{name:'イブ',rarity:'chromatic',color:'#00cec9',accent:'#00b894',maxHp:2900,speed:2.45,reload:.55,damage:220,range:400,bulletSpeed:11,spread:.15,bullets:3,superCharge:9,size:20,desc:'卵弾',atkType:'spread',
+gadget:{name:'ハッチ',cd:13,effect:'bearboost'},starPower:{name:'群れ',desc:'追加'},hyper:{name:'大孵化',mult:1.5,dur:5}},
+janet:{name:'ジャネット',rarity:'chromatic',color:'#fd79a8',accent:'#e84393',maxHp:3000,speed:2.45,reload:.6,damage:300,range:440,bulletSpeed:10,spread:.1,bullets:1,superCharge:9,size:20,desc:'音波ロケット',atkType:'rocket',
+gadget:{name:'ジャンプ',cd:11,effect:'jump'},starPower:{name:'ステージ',desc:'ダメ+'},hyper:{name:'アンコール',mult:1.5,dur:5}},
+bonnie:{name:'ボニー',rarity:'chromatic',color:'#fab1a0',accent:'#e17055',maxHp:3600,speed:2.3,reload:.7,damage:380,range:400,bulletSpeed:9,spread:.1,bullets:1,superCharge:8,size:22,desc:'大砲乗り',atkType:'lob',
+gadget:{name:'分離',cd:12,effect:'dash'},starPower:{name:'着地',desc:'爆発'},hyper:{name:'大大砲',mult:1.6,dur:4}},
+otis:{name:'オーティス',rarity:'chromatic',color:'#a29bfe',accent:'#6c5ce7',maxHp:3100,speed:2.4,reload:.55,damage:260,range:400,bulletSpeed:11,spread:.12,bullets:2,superCharge:9,size:21,desc:'インク',atkType:'projectile',
+gadget:{name:'沈黙',cd:13,effect:'poisonboost'},starPower:{name:'インク+',desc:'沈黙'},hyper:{name:'大放出',mult:1.5,dur:5}},
+sam:{name:'サム',rarity:'chromatic',color:'#fdcb6e',accent:'#e17055',maxHp:4200,speed:2.3,reload:.6,damage:300,range:280,bulletSpeed:11,spread:.15,bullets:2,superCharge:7,size:24,desc:'ナックル',atkType:'melee',
+gadget:{name:'回収',cd:10,effect:'dash'},starPower:{name:'拳',desc:'ダメ+'},hyper:{name:'フルパワー',mult:1.7,dur:4}},
+buster:{name:'バスター',rarity:'chromatic',color:'#ffeaa7',accent:'#fdcb6e',maxHp:4000,speed:2.25,reload:.7,damage:360,range:320,bulletSpeed:10,spread:.12,bullets:1,superCharge:8,size:25,desc:'映画光線',atkType:'laser',
+gadget:{name:'シールド',cd:11,effect:'shield'},starPower:{name:'拍手',desc:'反射'},hyper:{name:'プレミア',mult:1.5,dur:5}},
+gray:{name:'グレイ',rarity:'chromatic',color:'#b2bec3',accent:'#636e72',maxHp:3000,speed:2.5,reload:.55,damage:280,range:420,bulletSpeed:12,spread:.08,bullets:1,superCharge:9,size:20,desc:'ポータル',atkType:'projectile',
+gadget:{name:'テレポート',cd:12,effect:'teleport'},starPower:{name:'扉',desc:'移動'},hyper:{name:'次元',mult:1.5,dur:5}},
+mando:{name:'マンディ',rarity:'chromatic',color:'#fd79a8',accent:'#e84393',maxHp:2500,speed:2.5,reload:.75,damage:450,range:560,bulletSpeed:14,spread:.03,bullets:1,superCharge:10,size:19,desc:'糖分狙撃',atkType:'sniper',
+gadget:{name:'糖分',cd:11,effect:'speed'},starPower:{name:'甘い弾',desc:'ダメ+'},hyper:{name:'シュガーラッシュ',mult:1.5,dur:4}},
+rt:{name:'R-T',rarity:'chromatic',color:'#00cec9',accent:'#0984e3',maxHp:3200,speed:2.4,reload:.55,damage:260,range:400,bulletSpeed:11,spread:.1,bullets:2,superCharge:9,size:21,desc:'分離攻撃',atkType:'projectile',
+gadget:{name:'分離',cd:12,effect:'dash'},starPower:{name:'同期',desc:'ダメ+'},hyper:{name:'合体',mult:1.5,dur:5}},
+willow:{name:'ウィロー',rarity:'chromatic',color:'#6c5ce7',accent:'#5f27cd',maxHp:2700,speed:2.45,reload:.7,damage:300,range:420,bulletSpeed:9,spread:.1,bullets:1,superCharge:9,size:20,desc:'呪術',atkType:'lob',
+gadget:{name:'支配',cd:14,effect:'poisonboost'},starPower:{name:'呪い',desc:'制御'},hyper:{name:'大呪',mult:1.5,dur:5}},
+doug:{name:'ダグ',rarity:'chromatic',color:'#fab1a0',accent:'#e17055',maxHp:4400,speed:2.2,reload:.65,damage:280,range:260,bulletSpeed:10,spread:.2,bullets:2,superCharge:7,size:24,desc:'ソーセージ',atkType:'spread',
+gadget:{name:'ヒール',cd:10,effect:'heal'},starPower:{name:'復活',desc:'自己蘇生'},hyper:{name:'BBQ',mult:1.6,dur:4}},
+chuck:{name:'チャック',rarity:'chromatic',color:'#fdcb6e',accent:'#f39c12',maxHp:3500,speed:2.35,reload:.7,damage:340,range:380,bulletSpeed:10,spread:.1,bullets:1,superCharge:8,size:22,desc:'線路',atkType:'projectile',
+gadget:{name:'レール',cd:12,effect:'dash'},starPower:{name:'急行',desc:'速度'},hyper:{name:'特急',mult:1.5,dur:4}},
+charlie:{name:'チャーリー',rarity:'chromatic',color:'#e84393',accent:'#d63031',maxHp:3100,speed:2.4,reload:.6,damage:280,range:400,bulletSpeed:11,spread:.12,bullets:1,superCharge:9,size:21,desc:'糸巻き',atkType:'projectile',
+gadget:{name:'繭',cd:13,effect:'shield'},starPower:{name:'クモ',desc:'拘束'},hyper:{name:'大糸',mult:1.5,dur:5}},
+mico:{name:'ミコ',rarity:'chromatic',color:'#ffeaa7',accent:'#fdcb6e',maxHp:2800,speed:2.7,reload:.5,damage:240,range:300,bulletSpeed:12,spread:.1,bullets:1,superCharge:8,size:19,desc:'ジャンプ猿',atkType:'melee',
+gadget:{name:'ジャンプ',cd:8,effect:'jump'},starPower:{name:'バナナ',desc:'追加'},hyper:{name:'大乱闘',mult:1.6,dur:4}},
+kit:{name:'キット',rarity:'chromatic',color:'#fd79a8',accent:'#e84393',maxHp:3000,speed:2.6,reload:.45,damage:260,range:280,bulletSpeed:12,spread:.1,bullets:2,superCharge:8,size:19,desc:'猫パンチ',atkType:'melee',
+gadget:{name:'ダッシュ',cd:9,effect:'dash'},starPower:{name:'爪',desc:'ダメ+'},hyper:{name:'ニャンダフル',mult:1.6,dur:4}},
+larry:{name:'ラリー＆ローリー',rarity:'chromatic',color:'#00b894',accent:'#00a085',maxHp:3200,speed:2.4,reload:.55,damage:220,range:380,bulletSpeed:11,spread:.15,bullets:2,superCharge:9,size:20,desc:'双子',atkType:'projectile',
+gadget:{name:'交代',cd:11,effect:'dash'},starPower:{name:'連携',desc:'ダメ+'},hyper:{name:'双子砲',mult:1.5,dur:5}},
+lawrie:{name:'ローリー',rarity:'chromatic',color:'#0984e3',accent:'#0652DD',maxHp:3200,speed:2.4,reload:.55,damage:240,range:380,bulletSpeed:11,spread:.12,bullets:2,superCharge:9,size:20,desc:'双子攻撃',atkType:'projectile',
+gadget:{name:'交代',cd:11,effect:'dash'},starPower:{name:'連携',desc:'ダメ+'},hyper:{name:'双子砲',mult:1.5,dur:5}},
+angelo:{name:'アンジェロ',rarity:'chromatic',color:'#6c5ce7',accent:'#5f27cd',maxHp:2600,speed:2.5,reload:.7,damage:380,range:500,bulletSpeed:12,spread:.05,bullets:1,superCharge:10,size:19,desc:'毒矢',atkType:'poison',
+gadget:{name:'毒矢',cd:11,effect:'poisonboost'},starPower:{name:'猛毒',desc:'毒+'},hyper:{name:'毒の雨',mult:1.5,dur:5}},
+berry:{name:'ベリー',rarity:'chromatic',color:'#e84393',accent:'#d63031',maxHp:3000,speed:2.4,reload:.6,damage:260,range:360,bulletSpeed:10,spread:.15,bullets:2,superCharge:9,size:20,desc:'トレイ投げ',atkType:'lob',
+gadget:{name:'ヒール',cd:10,effect:'heal'},starPower:{name:'サービス',desc:'回復'},hyper:{name:'フルコース',mult:1.5,dur:5}},
+clancy:{name:'クランシー',rarity:'chromatic',color:'#fdcb6e',accent:'#e17055',maxHp:3600,speed:2.3,reload:.65,damage:300,range:380,bulletSpeed:11,spread:.12,bullets:1,superCharge:8,size:22,desc:'トキシック',atkType:'poison',
+gadget:{name:'毒',cd:11,effect:'poisonboost'},starPower:{name:'汚染',desc:'毒+'},hyper:{name:'廃棄物',mult:1.6,dur:4}},
+moe:{name:'モー',rarity:'chromatic',color:'#636e72',accent:'#2d3436',maxHp:4000,speed:2.25,reload:.7,damage:340,range:320,bulletSpeed:10,spread:.15,bullets:1,superCharge:8,size:24,desc:'ドリル車',atkType:'melee',
+gadget:{name:'ダッシュ',cd:10,effect:'dash'},starPower:{name:'掘削',desc:'ダメ+'},hyper:{name:'暴走',mult:1.7,dur:4}},
+kenji:{name:'ケンジ',rarity:'chromatic',color:'#dfe6e9',accent:'#b2bec3',maxHp:3500,speed:2.5,reload:.55,damage:320,range:300,bulletSpeed:12,spread:.1,bullets:2,superCharge:8,size:21,desc:'刀二刀流',atkType:'melee',
+gadget:{name:'斬撃',cd:9,effect:'dash'},starPower:{name:'居合',desc:'ダメ+'},hyper:{name:'剣豪',mult:1.7,dur:4}}
 };
 const SKINS={};
 Object.keys(BRAWLERS).forEach(k=>{SKINS[k]=[{id:'default',name:'通常',color:BRAWLERS[k].color,accent:BRAWLERS[k].accent},{id:'gold',name:'ゴールド',color:'#ffd700',accent:'#ff8c00',cost:400},{id:'dark',name:'ダーク',color:'#2c3e50',accent:BRAWLERS[k].accent,cost:600}]});
 function getSkin(key){const sid=save.selectedSkins[key]||'default';const list=SKINS[key]||[];return list.find(s=>s.id===sid)||list[0]}
 function isSkinUnlocked(b,s){return s==='default'||(save.skins[b]||[]).includes(s)}
-const RARITY_ORDER={common:0,rare:1,epic:2,legendary:3,mythic:4};
-const GACHA_RATES=[{rarity:'common',weight:40},{rarity:'rare',weight:28},{rarity:'epic',weight:18},{rarity:'legendary',weight:10},{rarity:'mythic',weight:4}];
+const RARITY_ORDER={common:0,rare:1,super_rare:2,epic:3,mythic:4,legendary:5,chromatic:6};
+const GACHA_RATES=[{rarity:'common',weight:30},{rarity:'rare',weight:22},{rarity:'super_rare',weight:16},{rarity:'epic',weight:14},{rarity:'mythic',weight:8},{rarity:'legendary',weight:6},{rarity:'chromatic',weight:4}];
 function rollGacha(){const total=GACHA_RATES.reduce((s,r)=>s+r.weight,0);let rand=Math.random()*total,rarity='common';for(const r of GACHA_RATES){rand-=r.weight;if(rand<=0){rarity=r.rarity;break}}const pool=Object.keys(BRAWLERS).filter(k=>BRAWLERS[k].rarity===rarity);const key=pool[Math.floor(Math.random()*pool.length)];return{key,rarity,isNew:!save.unlocked.includes(key)}}
 function canClaimDaily(){return save.lastDaily!==new Date().toDateString()}
 function claimDaily(){if(!canClaimDaily())return;const today=new Date().toDateString(),yesterday=new Date(Date.now()-864e5).toDateString();if(save.lastDaily===yesterday)save.dailyStreak++;else save.dailyStreak=1;save.lastDaily=today;const s=save.dailyStreak,coins=60+s*25,gems=s%7===0?30:8+Math.floor(s/2);save.coins+=coins;save.gems+=gems;if(s%5===0){const res=rollGacha();if(res.isNew)save.unlocked.push(res.key)}saveData();updateDailyUI();alert(`+${coins}🪙 +${gems}💎  連続${s}日`)}
@@ -369,7 +609,7 @@ super(x,y);this.b=BRAWLERS[key];this.key=key;this.isPlayer=isPlayer;
 const sk=getSkin(key);this.color=sk.color;this.accent=sk.accent;
 this.hp=this.b.maxHp;this.maxHp=this.b.maxHp;this.angle=0;this.reload=0;this.superC=0;this.power=0;this.size=this.b.size;
 this.invuln=0;this.chargeActive=false;this.chargeT=0;this.invisible=false;this.invisT=0;this.name=this.b.name;this.kills=0;
-this.poisonT=0;this.poisonDps=0;this.aiT=0;this.aiState='wander';this.wanderA=Math.random()*6.28;this.turret=null;this.bear=null;
+this.poisonT=0;this.poisonDps=0;this.burnT=0;this.burnDps=0;this.aimFlash=0;this.slashFx=null;this.dashAtk=false;this.dashAtkT=0;this.aiT=0;this.aiState='wander';this.wanderA=Math.random()*6.28;this.turret=null;this.bear=null;
 this.aiSkill=isRanked?0.88+Math.random()*0.12:0.55+Math.random()*0.3;
 this.gadgetCd=0;this.hcCharge=0;this.hcActive=false;this.hcT=0;this.shield=0;this.speedBoost=0;this.lifesteal=false;this.walkPhase=Math.random()*6.28;this.moveAmt=0;
 // Star Power passive
@@ -379,62 +619,121 @@ if(this.hasSP){if(this.b.starPower.name.includes('ダメージ')||this.b.starPow
 get dmg(){let d=this.b.damage*(1+this.power*.12);if(this.hcActive)d*=this.b.hyper.mult;return d}
 get spd(){let s=this.b.speed*(1+this.power*.04);if(this.speedBoost>0)s*=1.5;if(this.hcActive)s*=1.15;return s}
 takeDamage(amt,from){if(this.invuln>0||!this.alive||this.invisible)return;if(this.shield>0){this.shield-=amt;if(this.shield<0){amt=-this.shield;this.shield=0}else return}this.hp-=amt;this.invuln=.1;spawnP(this.x,this.y,this.color,4,2);if(this.hp<=0){this.hp=0;this.alive=false;spawnP(this.x,this.y,this.color,22,5);if(from&&from.isPlayer){kills++;from.superC=Math.min(from.b.superCharge,from.superC+2);from.hcCharge=Math.min(100,from.hcCharge+25)}if(from)from.kills++;for(let i=0;i<1+Math.floor(this.power/2);i++)powerCubes.push(new PowerCube(this.x+(Math.random()-.5)*40,this.y+(Math.random()-.5)*40))}}
-applyPoison(dps,dur){this.poisonDps=dps;this.poisonT=dur}
+applyPoison(dps,dur){this.poisonDps=Math.max(this.poisonDps||0,dps);this.poisonT=Math.max(this.poisonT||0,dur)}
+applyBurn(dps,dur){this.burnDps=Math.max(this.burnDps||0,dps);this.burnT=Math.max(this.burnT||0,dur)}
 shoot(a){
   if(this.reload>0||!this.alive)return;
   this.reload=this.b.reload*(this.hcActive?0.55:1);
-  const k=this.key, spd=this.b.bulletSpeed, rng=this.b.range, col=this.hcActive?'#ff00ff':this.color;
+  const k=this.key, b=this.b, spd=b.bulletSpeed, rng=b.range;
+  const col=this.hcActive?'#ff00ff':this.color;
   const ox=this.x+Math.cos(a)*(this.size+6), oy=this.y+Math.sin(a)*(this.size+6);
   const m=this.hcActive?1.25:1;
+  const atk=b.atkType||'projectile';
+  // Damage multipliers by attack type (like BS feels different)
+  const typeMult={spread:0.85,laser:1.0,projectile:1.0,bounce:0.9,rocket:1.25,lob:1.15,melee:1.35,wave:0.75,sniper:1.4,flame:0.55,poison:0.7}[atk]||1;
+  const baseDmg=this.dmg*m*typeMult;
+  const opts={atkType:atk, trail:true};
 
-  if(k==='shelly'){ // wide shotgun cone
-    for(let i=0;i<5;i++){const ang=a-0.32+0.16*i;bullets.push(new Bullet(ox,oy,Math.cos(ang)*spd,Math.sin(ang)*spd,this.dmg*m,rng,this,col,{}))}
-  } else if(k==='colt'){ // fast precise single
-    bullets.push(new Bullet(ox,oy,Math.cos(a)*spd,Math.sin(a)*spd,this.dmg*m,rng,this,col,{}));
-  } else if(k==='bull'){ // close heavy spread
-    for(let i=0;i<3;i++){const ang=a-0.18+0.18*i;bullets.push(new Bullet(ox,oy,Math.cos(ang)*spd,Math.sin(ang)*spd,this.dmg*m,rng*0.9,this,col,{}))}
-  } else if(k==='nita'){ // dual medium
-    for(let i=0;i<2;i++){const ang=a-0.1+0.2*i;bullets.push(new Bullet(ox,oy,Math.cos(ang)*spd,Math.sin(ang)*spd,this.dmg*m,rng,this,col,{}))}
-  } else if(k==='poco'){ // wide wave
-    bullets.push(new Bullet(ox,oy,Math.cos(a)*spd,Math.sin(a)*spd,this.dmg*m,rng,this,col,{bomb:false}));
-    // visual wave extras
-    for(let i=0;i<2;i++){const ang=a-0.25+0.5*i;bullets.push(new Bullet(ox,oy,Math.cos(ang)*spd*0.9,Math.sin(ang)*spd*0.9,this.dmg*0.5*m,rng*0.8,this,col,{}))}
-  } else if(k==='jessie'){ // bouncing energy ball
-    bullets.push(new Bullet(ox,oy,Math.cos(a)*spd,Math.sin(a)*spd,this.dmg*m,rng,this,col,{bounce:true,bounces:3}));
-  } else if(k==='dynamike'){ // lobbed bombs
-    const lobVy=Math.sin(a)*spd*0.7-4;
-    bullets.push(new Bullet(ox,oy,Math.cos(a)*spd*0.85,lobVy,this.dmg*m,rng,this,col,{bomb:true,lob:true}));
-  } else if(k==='crow'){ // triple poison knives
-    for(let i=0;i<3;i++){const ang=a-0.2+0.2*i;bullets.push(new Bullet(ox,oy,Math.cos(ang)*spd,Math.sin(ang)*spd,this.dmg*m,rng,this,col,{pois:true}))}
-  } else if(k==='leon'){ // dual short blades
-    for(let i=0;i<2;i++){const ang=a-0.12+0.24*i;bullets.push(new Bullet(ox,oy,Math.cos(ang)*spd,Math.sin(ang)*spd,this.dmg*m,rng*0.85,this,col,{}))}
-  } else if(k==='mortis'){ // short dash hit is super; basic is short range slash
-    bullets.push(new Bullet(ox,oy,Math.cos(a)*spd*1.2,Math.sin(a)*spd*1.2,this.dmg*m,rng*0.7,this,col,{}));
-  } else if(k==='spike'){ // lobbed cactus that splits
-    const lobVy=Math.sin(a)*spd*0.6-3.5;
-    bullets.push(new Bullet(ox,oy,Math.cos(a)*spd*0.8,lobVy,this.dmg*m,rng,this,col,{bomb:true,lob:true,split:true}));
-  } else if(k==='edgar'){ // short aggressive projectiles
-    bullets.push(new Bullet(ox,oy,Math.cos(a)*spd*1.1,Math.sin(a)*spd*1.1,this.dmg*m,rng*0.75,this,col,{}));
-  } else if(k==='amber'){ // continuous flame stream (multiple small)
-    for(let i=0;i<3;i++){
-      const ang=a+(Math.random()-0.5)*0.15;
-      const sp2=spd*(0.7+Math.random()*0.4);
-      bullets.push(new Bullet(ox,oy,Math.cos(ang)*sp2,Math.sin(ang)*sp2,this.dmg*0.45*m,rng*0.7,this,col,{flame:true,life:0.35}));
+  if(atk==='spread'){
+    const cnt=b.bullets||5, sp=b.spread||0.25;
+    for(let i=0;i<cnt;i++){
+      const ang=cnt>1?a-sp/2+(sp/(cnt-1||1))*i:a;
+      bullets.push(new Bullet(ox,oy,Math.cos(ang)*spd,Math.sin(ang)*spd,baseDmg,rng,this,col,{...opts,size:4}));
     }
-  } else if(k==='surge'){ // single solid shot
-    bullets.push(new Bullet(ox,oy,Math.cos(a)*spd,Math.sin(a)*spd,this.dmg*m,rng,this,col,{}));
-  } else if(k==='belle'){ // long range sniper
-    bullets.push(new Bullet(ox,oy,Math.cos(a)*spd,Math.sin(a)*spd,this.dmg*1.15*m,rng*1.1,this,col,{}));
-  } else if(k==='griff'){ // coin spray
-    for(let i=0;i<4;i++){const ang=a-0.28+0.18*i;bullets.push(new Bullet(ox,oy,Math.cos(ang)*spd,Math.sin(ang)*spd,this.dmg*0.7*m,rng,this,col,{}))}
+  } else if(atk==='laser'){
+    bullets.push(new Bullet(ox,oy,Math.cos(a)*spd,Math.sin(a)*spd,baseDmg,rng,this,col,{...opts,laser:true,size:3.5}));
+  } else if(atk==='bounce'){
+    bullets.push(new Bullet(ox,oy,Math.cos(a)*spd,Math.sin(a)*spd,baseDmg,rng,this,col,{...opts,bounce:true,bounces:4,size:5}));
+  } else if(atk==='rocket'){
+    bullets.push(new Bullet(ox,oy,Math.cos(a)*spd,Math.sin(a)*spd,baseDmg,rng,this,col,{...opts,bomb:true,size:7,rocket:true}));
+  } else if(atk==='lob'){
+    const lobVy=Math.sin(a)*spd*0.55-3.8;
+    bullets.push(new Bullet(ox,oy,Math.cos(a)*spd*0.8,lobVy,baseDmg,rng,this,col,{...opts,bomb:true,lob:true,size:8}));
+  } else if(atk==='melee'){
+    // Melee: slash / dash instead of gun bullets
+    const mk = this.key;
+    // Dash-type (Mortis, Edgar, Fang, Kit, Mico, Kenji)
+    if(mk==='mortis'||mk==='edgar'||mk==='fang'||mk==='kit'||mk==='mico'||mk==='kenji'||mk==='stu'){
+      const dashSp = (mk==='mortis'?16:mk==='edgar'?14:13);
+      this.vx = Math.cos(a)*dashSp;
+      this.vy = Math.sin(a)*dashSp;
+      this.dashAtk = true;
+      this.dashAtkT = mk==='mortis'?0.28:0.22;
+      this.invuln = Math.max(this.invuln, 0.15);
+      this.slashFx = {t:0.25, ang:a, style:'dash', col:this.color};
+      // Hitbox burst in front
+      for(const c of characters){
+        if(c===this||!c.alive)continue;
+        const d = dist(this,c);
+        const toA = Math.atan2(c.y-this.y,c.x-this.x);
+        let diff = Math.abs(toA-a); if(diff>Math.PI) diff=6.28-diff;
+        if(d < this.size+c.size+55 && diff < 0.9){
+          c.takeDamage(baseDmg, this);
+          if(this.lifesteal) this.hp=Math.min(this.maxHp,this.hp+baseDmg*0.25);
+          spawnP(c.x,c.y,this.color,8,4);
+        }
+      }
+      spawnP(this.x,this.y,this.color,6,3);
+    }
+    // Punch / bat / hammer (El Primo, Bibi, Frank, Sam, Ash, Doug, Moe, Buster, Rosa close)
+    else {
+      this.slashFx = {t:0.22, ang:a, style:(mk==='bibi'?'bat':mk==='frank'?'hammer':'punch'), col:this.color};
+      // Arc hit detection
+      for(const c of characters){
+        if(c===this||!c.alive)continue;
+        const d = dist(this,c);
+        const toA = Math.atan2(c.y-this.y,c.x-this.x);
+        let diff = Math.abs(toA-a); if(diff>Math.PI) diff=6.28-diff;
+        const reach = (mk==='frank'?90:mk==='elprimo'?85:70);
+        if(d < reach && diff < 1.1){
+          c.takeDamage(baseDmg, this);
+          // Knockback
+          c.vx += Math.cos(a)*6;
+          c.vy += Math.sin(a)*6;
+          spawnP(c.x,c.y,'#fff',6,3);
+        }
+      }
+      // Visual slash particles along arc
+      for(let i=0;i<5;i++){
+        const sa = a - 0.7 + 1.4*(i/4);
+        spawnP(this.x+Math.cos(sa)*40, this.y+Math.sin(sa)*40, this.color, 2, 2);
+      }
+    }
+  } else if(atk==='wave'){
+    for(let i=0;i<3;i++){
+      const ang=a-0.2+0.2*i;
+      bullets.push(new Bullet(ox,oy,Math.cos(ang)*spd,Math.sin(ang)*spd,baseDmg*(i===1?1:0.7),rng,this,col,{...opts,size:6,wave:true}));
+    }
+  } else if(atk==='sniper'){
+    bullets.push(new Bullet(ox,oy,Math.cos(a)*spd,Math.sin(a)*spd,baseDmg,rng*1.05,this,col,{...opts,laser:true,size:3,sniper:true}));
+  } else if(atk==='flame'){
+    for(let i=0;i<4;i++){
+      const ang=a+(Math.random()-0.5)*0.2;
+      const sp2=spd*(0.65+Math.random()*0.4);
+      bullets.push(new Bullet(ox,oy,Math.cos(ang)*sp2,Math.sin(ang)*sp2,baseDmg,rng*0.7,this,col,{...opts,flame:true,life:0.4,size:7,burn:true}));
+    }
+  } else if(atk==='poison'){
+    const cnt=b.bullets||3, sp=b.spread||0.18;
+    for(let i=0;i<cnt;i++){
+      const ang=cnt>1?a-sp/2+(sp/(cnt-1))*i:a;
+      bullets.push(new Bullet(ox,oy,Math.cos(ang)*spd,Math.sin(ang)*spd,baseDmg,rng,this,col,{...opts,pois:true,size:4.5}));
+    }
   } else {
-    for(let i=0;i<(this.b.bullets||1);i++){
-      let ang=a+(Math.random()-0.5)*(this.b.spread||0.1);
-      bullets.push(new Bullet(ox,oy,Math.cos(ang)*spd,Math.sin(ang)*spd,this.dmg*m,rng,this,col,{}));
+    // projectile default
+    const cnt=b.bullets||1, sp=b.spread||0.08;
+    for(let i=0;i<cnt;i++){
+      const ang=cnt>1?a-sp/2+(sp/(cnt-1||1))*i:a+(Math.random()-0.5)*sp;
+      bullets.push(new Bullet(ox,oy,Math.cos(ang)*spd,Math.sin(ang)*spd,baseDmg,rng,this,col,{...opts,size:4.5}));
     }
   }
-  spawnP(ox,oy,'#fff',4,2.5);
+  // Muzzle flash
+  spawnP(ox,oy,'#fff',5,3);
+  this.aimFlash=0.12;
+  if(this.isPlayer && mpMode && conn && conn.open){
+    try{ conn.send({t:'shoot', a:a}); }catch(e){}
+  }
 }
+
 useSuper(){if(this.superC<this.b.superCharge||!this.alive)return false;this.superC=0;
 const m=this.hcActive?1.4:1;
 if(this.key==='shelly'){for(let i=0;i<12;i++){const a=this.angle-.6+1.2/11*i;bullets.push(new Bullet(this.x+Math.cos(a)*30,this.y+Math.sin(a)*30,Math.cos(a)*13,Math.sin(a)*13,this.dmg*1.4*m,420,this,'#ffd700',{}))}spawnP(this.x,this.y,'#ffd700',14,4)}
@@ -446,9 +745,9 @@ else if(this.key==='dynamike'){for(let i=0;i<3;i++){const a=this.angle-.3+.3*i;b
 else if(this.key==='crow'){for(let i=0;i<8;i++){const a=this.angle-.5+1/7*i;bullets.push(new Bullet(this.x,this.y,Math.cos(a)*14,Math.sin(a)*14,this.dmg*.9*m,450,this,'#2c3e50',{pois:true}))}}
 else if(this.key==='leon'){this.invisible=true;this.invisT=5*(this.hasSP?1.3:1);spawnP(this.x,this.y,'#27ae60',16,4)}
 else if(this.key==='poco'){for(const c of characters){if(dist(this,c)<200){if(c===this||c.isPlayer===this.isPlayer){c.hp=Math.min(c.maxHp,c.hp+800*(this.hasSP?1.2:1));spawnP(c.x,c.y,'#9b59b6',5,2)}else if(c.alive)c.takeDamage(this.dmg*.8*m,this)}}}
-else if(this.key==='mortis'){this.vx=Math.cos(this.angle)*18;this.vy=Math.sin(this.angle)*18;this.invuln=.4;for(const c of characters)if(c!==this&&c.alive&&dist(this,c)<80)c.takeDamage(this.dmg*1.2*m,this)}
+else if(this.key==='mortis'){this.vx=Math.cos(this.angle)*20;this.vy=Math.sin(this.angle)*20;this.invuln=.45;this.dashAtk=true;this.dashAtkT=.4;this.slashFx={t:.4,ang:this.angle,style:'dash',col:'#8e44ad'};for(const c of characters)if(c!==this&&c.alive&&dist(this,c)<90){c.takeDamage(this.dmg*1.3*m,this);this.hp=Math.min(this.maxHp,this.hp+200)};spawnP(this.x,this.y,'#8e44ad',14,5)}
 else if(this.key==='spike'){for(let i=0;i<8;i++){const a=i*Math.PI/4;bullets.push(new Bullet(this.x,this.y,Math.cos(a)*7,Math.sin(a)*7,this.dmg*m,300,this,'#2ecc71',{bomb:true,split:true}))}}
-else if(this.key==='edgar'){this.vx=Math.cos(this.angle)*16;this.vy=Math.sin(this.angle)*16;this.invuln=.5;for(const c of characters)if(c!==this&&c.alive&&dist(this,c)<70)c.takeDamage(this.dmg*1.3*m,this)}
+else if(this.key==='edgar'){this.vx=Math.cos(this.angle)*18;this.vy=Math.sin(this.angle)*18;this.invuln=.5;this.dashAtk=true;this.dashAtkT=.35;this.slashFx={t:.35,ang:this.angle,style:'dash',col:'#e91e63'};for(const c of characters)if(c!==this&&c.alive&&dist(this,c)<80)c.takeDamage(this.dmg*1.4*m,this);spawnP(this.x,this.y,'#e91e63',12,4)}
 else if(this.key==='amber'){for(let i=0;i<5;i++){const a=this.angle-.2+.1*i;bullets.push(new Bullet(this.x,this.y,Math.cos(a)*9,Math.sin(a)*9,this.dmg*.8*m,350,this,'#ff5722',{flame:true,life:0.5}))}}
 else if(this.key==='surge'){this.power=Math.min(8,this.power+2);this.maxHp=this.b.maxHp*(1+this.power*.1);this.hp=Math.min(this.maxHp,this.hp+400);spawnP(this.x,this.y,'#00bcd4',12,3)}
 else if(this.key==='belle'){for(const c of characters){if(c!==this&&c.alive&&dist(this,c)<600){c.takeDamage(this.dmg*1.5*m,this);spawnP(c.x,c.y,'#ffc107',8,3);break}}}
@@ -470,9 +769,22 @@ else if(e==='fastexplode'){this.reload=0}
 else if(e==='markboom'){for(const c of characters)if(c!==this&&c.alive&&dist(this,c)<500){c.takeDamage(this.dmg*1.2,this);break}}
 spawnP(this.x,this.y,'#00e5ff',8,3)}
 useHyper(){if(this.hcCharge<100||this.hcActive||!this.alive)return;this.hcCharge=0;this.hcActive=true;this.hcT=this.b.hyper.dur;spawnP(this.x,this.y,'#ff00ff',20,5)}
-update(dt){if(!this.alive)return;this.reload=Math.max(0,this.reload-dt);this.invuln=Math.max(0,this.invuln-dt);this.gadgetCd=Math.max(0,this.gadgetCd-dt);this.speedBoost=Math.max(0,this.speedBoost-dt);
+update(dt){if(!this.alive)return;this.reload=Math.max(0,this.reload-dt);this.aimFlash=Math.max(0,this.aimFlash-dt);
+if(this.slashFx){this.slashFx.t-=dt;if(this.slashFx.t<=0)this.slashFx=null}
+if(this.dashAtk){this.dashAtkT-=dt;
+  // Deal damage while dashing
+  for(const c of characters){
+    if(c===this||!c.alive)continue;
+    if(dist(this,c)<this.size+c.size+18){
+      c.takeDamage(this.dmg*0.35,this);
+      if(this.lifesteal) this.hp=Math.min(this.maxHp,this.hp+this.dmg*0.1);
+    }
+  }
+  if(this.dashAtkT<=0){this.dashAtk=false;this.vx*=0.3;this.vy*=0.3}
+}this.invuln=Math.max(0,this.invuln-dt);this.gadgetCd=Math.max(0,this.gadgetCd-dt);this.speedBoost=Math.max(0,this.speedBoost-dt);
 if(this.hcActive){this.hcT-=dt;if(this.hcT<=0)this.hcActive=false}
 if(this.poisonT>0){this.poisonT-=dt;this.hp-=this.poisonDps*dt;if(this.hp<=0){this.hp=0;this.alive=false}}
+if(this.burnT>0){this.burnT-=dt;this.hp-=this.burnDps*dt;if(this.hp<=0){this.hp=0;this.alive=false}}
 if(this.invisible){this.invisT-=dt;if(this.invisT<=0)this.invisible=false}
 if(this.chargeActive){this.chargeT-=dt;for(const e of characters)if(e!==this&&e.alive&&dist(this,e)<this.size+e.size+10)e.takeDamage(this.dmg*.3,this);if(this.chargeT<=0){this.chargeActive=false;this.vx*=.3;this.vy*=.3}}
 if(!this.chargeActive){this.vx*=0.78;this.vy*=0.78}
@@ -513,6 +825,15 @@ ctx.beginPath();ctx.ellipse(sx+1,sy+s*0.72,s*0.92,s*0.28,0,0,6.28);ctx.fillStyle
 
 // Power aura
 if(this.power>0){ctx.beginPath();ctx.arc(sx,drawY,s+5+this.power*1.1,0,6.28);ctx.fillStyle=`rgba(255,215,0,${0.07+this.power*0.02})`;ctx.fill()}
+// Attack trajectory preview (player only, brief)
+if(this.isPlayer && this.aimFlash>0){
+  const rng=this.b.range*0.9;
+  ctx.globalAlpha=this.aimFlash*2;
+  ctx.strokeStyle=this.color;ctx.lineWidth=2;ctx.setLineDash([6,6]);
+  ctx.beginPath();ctx.moveTo(sx,drawY);
+  ctx.lineTo(sx+Math.cos(this.angle)*rng*0.4, drawY+Math.sin(this.angle)*rng*0.4);
+  ctx.stroke();ctx.setLineDash([]);ctx.globalAlpha=1;
+}
 if(this.hcActive){ctx.beginPath();ctx.arc(sx,drawY,s+13,0,6.28);ctx.fillStyle='rgba(255,0,255,0.2)';ctx.fill()}
 
 // ===== Per-brawler stylized body (Brawl Stars inspired, original art) =====
@@ -714,6 +1035,63 @@ ctx.fillStyle='rgba(255,255,255,0.25)';ctx.fillRect(bx,by,bw*hr,2);
 ctx.font='bold 10px Nunito';ctx.textAlign='center';ctx.fillStyle=this.isPlayer?'#00e5ff':'#fff';
 ctx.shadowColor='rgba(0,0,0,0.7)';ctx.shadowBlur=3;
 ctx.fillText(this.name+(this.power>0?` ★${this.power}`:''),sx,by-5);
+// Status icons
+if(this.poisonT>0){ctx.font='12px sans-serif';ctx.fillText('☠️',sx-12,by-16)}
+if(this.burnT>0){ctx.font='12px sans-serif';ctx.fillText('🔥',sx+12,by-16)}
+// Melee slash / dash visual
+if(this.slashFx && this.slashFx.t>0){
+  const fx=this.slashFx, alpha=Math.min(1,fx.t*5), ang=fx.ang;
+  ctx.save();
+  ctx.translate(sx, typeof drawY!=='undefined'?drawY:sy);
+  ctx.rotate(ang);
+  ctx.globalAlpha=alpha;
+  if(fx.style==='dash'){
+    // Speed lines behind
+    ctx.strokeStyle=fx.col;ctx.lineWidth=3;ctx.lineCap='round';
+    for(let i=0;i<4;i++){
+      ctx.globalAlpha=alpha*(0.8-i*0.15);
+      ctx.beginPath();ctx.moveTo(-15-i*10,-8+i*4);ctx.lineTo(-35-i*14,-8+i*4);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(-15-i*10,8-i*4);ctx.lineTo(-35-i*14,8-i*4);ctx.stroke();
+    }
+    // Forward arc
+    ctx.globalAlpha=alpha*0.7;
+    ctx.strokeStyle='#fff';ctx.lineWidth=4;
+    ctx.beginPath();ctx.arc(20,0,28,-0.9,0.9);ctx.stroke();
+  } else if(fx.style==='bat'){
+    ctx.strokeStyle='#fff';ctx.lineWidth=5;ctx.lineCap='round';
+    ctx.beginPath();ctx.arc(10,0,42,-1.0,1.0);ctx.stroke();
+    ctx.strokeStyle=fx.col;ctx.lineWidth=3;
+    ctx.beginPath();ctx.arc(10,0,38,-1.0,1.0);ctx.stroke();
+  } else if(fx.style==='hammer'){
+    ctx.fillStyle='rgba(255,255,255,'+(alpha*0.5)+')';
+    ctx.beginPath();ctx.arc(25,0,35,0,6.28);ctx.fill();
+    ctx.strokeStyle='#fff';ctx.lineWidth=6;
+    ctx.beginPath();ctx.arc(20,0,45,-0.8,0.8);ctx.stroke();
+  } else {
+    // punch / claw slash
+    ctx.strokeStyle='#fff';ctx.lineWidth=4;ctx.lineCap='round';
+    ctx.beginPath();ctx.arc(8,0,36,-0.95,0.95);ctx.stroke();
+    ctx.strokeStyle=fx.col;ctx.lineWidth=2.5;
+    ctx.beginPath();ctx.arc(8,0,32,-0.95,0.95);ctx.stroke();
+    // Claw marks for edgar/kit
+    ctx.strokeStyle='rgba(255,255,255,0.8)';ctx.lineWidth=2;
+    for(let i=-1;i<=1;i++){
+      ctx.beginPath();ctx.moveTo(15,i*12);ctx.lineTo(45,i*14);ctx.stroke();
+    }
+  }
+  ctx.globalAlpha=1;
+  ctx.restore();
+}
+// Dash attack afterimage
+if(this.dashAtk){
+  ctx.globalAlpha=0.35;
+  ctx.beginPath();ctx.arc(sx-this.vx*1.5,sy-this.vy*1.5,this.size*0.9,0,6.28);
+  ctx.fillStyle=this.color;ctx.fill();
+  ctx.globalAlpha=0.2;
+  ctx.beginPath();ctx.arc(sx-this.vx*3,sy-this.vy*3,this.size*0.75,0,6.28);
+  ctx.fillStyle=this.color;ctx.fill();
+  ctx.globalAlpha=1;
+}
 ctx.shadowBlur=0;
 
 if(this.bear&&this.bear.hp>0){ctx.beginPath();ctx.arc(this.bear.x-cx,this.bear.y-cy,this.bear.size,0,6.28);ctx.fillStyle='#d35400';ctx.fill();ctx.fillStyle='#fff';ctx.font='11px Nunito';ctx.fillText('🐻',this.bear.x-cx,this.bear.y-cy+3)}
@@ -722,27 +1100,31 @@ if(this.turret&&this.turret.hp>0){ctx.fillStyle='#c0392b';ctx.fillRect(this.turr
 class Bullet extends Entity{
 constructor(x,y,vx,vy,dmg,range,owner,color,opts={}){
   super(x,y);this.vx=vx;this.vy=vy;this.dmg=dmg;this.range=range;this.owner=owner;this.color=color;
-  this.trav=0;this.bomb=!!opts.bomb;this.pois=!!opts.pois;this.bounce=!!opts.bounce;this.lob=!!opts.lob;
-  this.flame=!!opts.flame;this.split=!!opts.split;this.bounces=opts.bounces||0;this.life=opts.life||0;
-  this.size=this.bomb?8:(this.flame?6:4.5);this.gravity=this.lob?0.22:0;this.vy0=vy;
-  this.maxLife=this.life;
+  this.trav=0;this.bomb=!!opts.bomb;this.pois=!!opts.pois;this.burn=!!opts.burn;this.bounce=!!opts.bounce;
+  this.lob=!!opts.lob;this.flame=!!opts.flame;this.split=!!opts.split;this.laser=!!opts.laser;
+  this.rocket=!!opts.rocket;this.wave=!!opts.wave;this.melee=!!opts.melee;this.sniper=!!opts.sniper;
+  this.trail=opts.trail!==false;this.bounces=opts.bounces||0;this.life=opts.life||0;
+  this.size=opts.size||(this.bomb?8:4.5);this.gravity=this.lob?0.22:0;
+  this.maxLife=this.life;this.trailPts=[];this.atkType=opts.atkType||'';
 }
 update(dt){
-  if(this.lob){this.vy+=this.gravity*60*dt} // arc
-  this.x+=this.vx;this.y+=this.vy;this.trav+=Math.hypot(this.vx,this.vy);
+  if(this.lob) this.vy+=this.gravity*60*dt;
+  this.x+=this.vx; this.y+=this.vy;
+  this.trav+=Math.hypot(this.vx,this.vy);
+  // Trail points for trajectory display
+  if(this.trail){
+    this.trailPts.push({x:this.x,y:this.y});
+    if(this.trailPts.length>12) this.trailPts.shift();
+  }
   if(this.life>0){this.life-=dt;if(this.life<=0){if(this.bomb||this.split)this.explode();this.alive=false;return}}
   if(this.trav>this.range&&!this.flame){if(this.bomb||this.split)this.explode();this.alive=false;return}
-  // bounce
   if(this.bounce&&this.bounces>0){
     for(const o of obstacles){
       if(o.type==='box'&&o.hp<=0)continue;
       if(circRect(this.x,this.y,this.size,o)){
-        // simple bounce
         const cx=o.x+o.w/2,cy=o.y+o.h/2;
         if(Math.abs(this.x-cx)>Math.abs(this.y-cy))this.vx*=-1;else this.vy*=-1;
-        this.bounces--;this.trav*=0.5;
-        spawnP(this.x,this.y,this.color,3,2);
-        return;
+        this.bounces--; this.trav*=0.4; spawnP(this.x,this.y,this.color,3,2); return;
       }
     }
   } else {
@@ -760,9 +1142,10 @@ update(dt){
     if(c===this.owner||!c.alive)continue;
     if(dist(this,c)<this.size+c.size){
       c.takeDamage(this.dmg,this.owner);
-      if(this.pois)c.applyPoison(50,3.5);
-      if(this.owner&&this.owner.lifesteal)this.owner.hp=Math.min(this.owner.maxHp,this.owner.hp+this.dmg*.3);
-      if(this.bomb||this.split)this.explode();
+      if(this.pois) c.applyPoison(55,3.5);
+      if(this.burn||this.flame) c.applyBurn(40,2.5);
+      if(this.owner&&this.owner.lifesteal) this.owner.hp=Math.min(this.owner.maxHp,this.owner.hp+this.dmg*.3);
+      if(this.bomb||this.split) this.explode();
       if(!this.flame){this.alive=false;spawnP(this.x,this.y,this.color,4,2)}
       if(this.owner){this.owner.superC=Math.min(this.owner.b.superCharge,this.owner.superC+.3);this.owner.hcCharge=Math.min(100,this.owner.hcCharge+3)}
       return;
@@ -771,33 +1154,66 @@ update(dt){
 }
 explode(){
   spawnP(this.x,this.y,this.color||'#f1c40f',16,5);
-  const r=this.split?70:90;
-  for(const c of characters)if(c!==this.owner&&c.alive&&dist(this,c)<r)c.takeDamage(this.dmg*(this.split?0.5:0.7),this.owner);
-  if(this.split){ // spike-like secondary spikes
+  const r=this.split?70:95;
+  for(const c of characters)if(c!==this.owner&&c.alive&&dist(this,c)<r){
+    c.takeDamage(this.dmg*(this.split?0.5:0.7),this.owner);
+    if(this.atkType==='lob'||this.rocket) c.applyBurn(25,1.5);
+  }
+  if(this.split){
     for(let i=0;i<6;i++){
       const a=i*Math.PI/3;
-      bullets.push(new Bullet(this.x,this.y,Math.cos(a)*6,Math.sin(a)*6,this.dmg*0.4,120,this.owner,'#2ecc71',{}));
+      bullets.push(new Bullet(this.x,this.y,Math.cos(a)*6,Math.sin(a)*6,this.dmg*0.4,120,this.owner,'#2ecc71',{size:3}));
     }
   }
 }
 draw(cx,cy){
-  const sx=this.x-cx,sy=this.y-cy;
+  const sx=this.x-cx, sy=this.y-cy;
+  // Trajectory trail (Brawl Stars style)
+  if(this.trail && this.trailPts.length>1){
+    ctx.beginPath();
+    for(let i=0;i<this.trailPts.length;i++){
+      const p=this.trailPts[i];
+      const px=p.x-cx, py=p.y-cy;
+      if(i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+    }
+    ctx.strokeStyle=this.color;
+    ctx.globalAlpha=0.35;
+    ctx.lineWidth=this.laser||this.sniper?2.5:(this.bomb?4:2);
+    ctx.lineCap='round';
+    ctx.stroke();
+    ctx.globalAlpha=1;
+  }
   if(this.flame){
-    ctx.beginPath();ctx.arc(sx,sy,this.size+Math.random()*3,0,6.28);
-    ctx.fillStyle=`rgba(255,${100+Math.random()*80},0,0.7)`;ctx.fill();
+    ctx.beginPath();ctx.arc(sx,sy,this.size+Math.random()*4,0,6.28);
+    ctx.fillStyle='rgba(255,'+(80+Math.random()*100)+',0,0.75)';ctx.fill();
     return;
   }
   if(this.lob){
-    // shadow under lobbed bomb
-    const shadowY=sy+Math.abs(this.vy)*2;
-    ctx.beginPath();ctx.ellipse(sx,shadowY,6,3,0,0,6.28);ctx.fillStyle='rgba(0,0,0,0.25)';ctx.fill();
+    const shadowY=sy+18+Math.abs(this.vy);
+    ctx.beginPath();ctx.ellipse(sx,shadowY,7,3.5,0,0,6.28);ctx.fillStyle='rgba(0,0,0,0.3)';ctx.fill();
   }
-  ctx.beginPath();ctx.moveTo(sx,sy);ctx.lineTo(sx-this.vx*1.3,sy-this.vy*1.3);
-  ctx.strokeStyle=this.color;ctx.globalAlpha=.4;ctx.lineWidth=this.bomb?5:2.5;ctx.stroke();ctx.globalAlpha=1;
-  ctx.beginPath();ctx.arc(sx,sy,this.size,0,6.28);ctx.fillStyle=this.color;ctx.fill();
-  ctx.beginPath();ctx.arc(sx,sy,this.size*.4,0,6.28);ctx.fillStyle='#fff';ctx.fill();
+  // Bullet body
+  if(this.laser||this.sniper){
+    // Long laser streak
+    const len=this.sniper?18:12;
+    const ang=Math.atan2(this.vy,this.vx);
+    ctx.strokeStyle=this.color;ctx.lineWidth=3;ctx.lineCap='round';ctx.globalAlpha=0.9;
+    ctx.beginPath();ctx.moveTo(sx,sy);ctx.lineTo(sx-Math.cos(ang)*len,sy-Math.sin(ang)*len);ctx.stroke();
+    ctx.globalAlpha=1;
+    ctx.beginPath();ctx.arc(sx,sy,this.size,0,6.28);ctx.fillStyle='#fff';ctx.fill();
+  } else if(this.rocket){
+    ctx.beginPath();ctx.arc(sx,sy,this.size,0,6.28);ctx.fillStyle=this.color;ctx.fill();
+    ctx.beginPath();ctx.arc(sx-this.vx*0.5,sy-this.vy*0.5,this.size*0.6,0,6.28);ctx.fillStyle='#ff9800';ctx.fill();
+  } else {
+    ctx.beginPath();ctx.arc(sx,sy,this.size,0,6.28);ctx.fillStyle=this.color;ctx.fill();
+    ctx.beginPath();ctx.arc(sx,sy,this.size*0.4,0,6.28);ctx.fillStyle='#fff';ctx.fill();
+  }
+  // Poison / burn indicator on projectile
+  if(this.pois){ctx.beginPath();ctx.arc(sx,sy,this.size+2,0,6.28);ctx.strokeStyle='rgba(0,255,100,0.6)';ctx.lineWidth=1.5;ctx.stroke()}
+  if(this.burn){ctx.beginPath();ctx.arc(sx,sy,this.size+2,0,6.28);ctx.strokeStyle='rgba(255,100,0,0.6)';ctx.lineWidth=1.5;ctx.stroke()}
 }
 }
+
 class PowerCube extends Entity{constructor(x,y){super(x,y);this.bob=Math.random()*6.28}update(dt){this.bob+=dt*4}draw(cx,cy){const sx=this.x-cx,sy=this.y-cy+Math.sin(this.bob)*3;ctx.beginPath();ctx.arc(sx,sy,13,0,6.28);ctx.fillStyle='rgba(255,215,0,.18)';ctx.fill();ctx.save();ctx.translate(sx,sy);ctx.rotate(this.bob*.3);ctx.fillStyle='#ffd700';ctx.fillRect(-7,-7,14,14);ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.strokeRect(-7,-7,14,14);ctx.restore()}}
 class Particle{constructor(x,y,c,sp){this.x=x;this.y=y;this.vx=(Math.random()-.5)*sp*2;this.vy=(Math.random()-.5)*sp*2;this.life=.25+Math.random()*.3;this.max=this.life;this.c=c;this.s=1.5+Math.random()*2.5}update(dt){this.x+=this.vx;this.y+=this.vy;this.vx*=.93;this.vy*=.93;this.life-=dt}draw(cx,cy){const a=this.life/this.max;ctx.globalAlpha=a;ctx.beginPath();ctx.arc(this.x-cx,this.y-cy,this.s*a,0,6.28);ctx.fillStyle=this.c;ctx.fill();ctx.globalAlpha=1}}
 function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
@@ -809,13 +1225,116 @@ function spawnP(x,y,c,n,s){
   for(let i=0;i<count;i++) particles.push(new Particle(x,y,c,s));
 }
 let player=null,characters=[],bullets=[],powerCubes=[],particles=[],camera={x:0,y:0};
-function startMM(ranked){isRanked=ranked;gameState=STATE.mm;document.getElementById('startMenu').classList.add('hidden');document.getElementById('matchmakingMenu').classList.remove('hidden');document.getElementById('mmTitle').textContent=ranked?'ランクマッチ検索中':'カジュアル検索中';setTimeout(()=>{document.getElementById('matchmakingMenu').classList.add('hidden');startGame()},1600+Math.random()*1000)}
-function startGame(){if(!save.unlocked.includes(selectedBrawler)){alert('未解放');return}generateMap();characters=[];bullets=[];powerCubes=[];particles=[];kills=0;powerCollected=0;startTime=Date.now();
-player=new Character(WORLD.width/2,WORLD.height/2,selectedBrawler,true);characters.push(player);
-const keys=Object.keys(BRAWLERS),sp=[{x:200,y:200},{x:2200,y:200},{x:200,y:1400},{x:2200,y:1400},{x:1200,y:200},{x:1200,y:1400},{x:200,y:800},{x:2200,y:800}];
-for(let i=0;i<7;i++)characters.push(new Character(sp[i].x+(Math.random()-.5)*40,sp[i].y+(Math.random()-.5)*40,keys[Math.floor(Math.random()*keys.length)],false));
-for(let i=0;i<12;i++)powerCubes.push(new PowerCube(100+Math.random()*(WORLD.width-200),100+Math.random()*(WORLD.height-200)));
-window._endGameDone=false;gameState=STATE.playing;document.getElementById('hud').style.display='flex';document.getElementById('hcBar').style.display='block';document.getElementById('abilityBar').style.display='flex';document.getElementById('currencyBar').style.display='none'}
+function startMM(ranked){
+  try {
+    isRanked = !!ranked;
+    window._endGameDone = false;
+    window._ending = false;
+    gameState = STATE.mm;
+
+    var go = document.getElementById('gameOverMenu');
+    if(go){ go.classList.add('hidden'); go.style.display='none'; go.style.pointerEvents='none'; }
+    var sm = document.getElementById('startMenu');
+    if(sm){ sm.classList.add('hidden'); sm.style.display='none'; }
+    var mm = document.getElementById('matchmakingMenu');
+    if(mm){
+      mm.classList.remove('hidden');
+      mm.style.display = 'flex';
+      mm.style.zIndex = '50';
+      mm.style.pointerEvents = 'auto';
+    }
+    var mt = document.getElementById('mmTitle');
+    if(mt) mt.textContent = ranked ? 'ランクマッチ検索中' : 'カジュアル検索中';
+
+    setTimeout(function(){
+      try {
+        if(mm){ mm.classList.add('hidden'); mm.style.display='none'; }
+        startGame();
+      } catch(e) {
+        console.error(e);
+        alert('開始失敗: ' + e.message);
+        returnToMenu();
+      }
+    }, 500);
+  } catch(e) {
+    console.error('startMM', e);
+    returnToMenu();
+  }
+}
+
+function startGame(){
+  try {
+    // Validate selection
+    if(!selectedBrawler || !BRAWLERS[selectedBrawler]) selectedBrawler = 'shelly';
+    if(!save.unlocked || !save.unlocked.includes(selectedBrawler)){
+      selectedBrawler = 'shelly';
+      if(!save.unlocked) save.unlocked = ['shelly','colt','bull'];
+      if(!save.unlocked.includes('shelly')) save.unlocked.push('shelly');
+    }
+
+    window._endGameDone = false;
+    window._ending = false;
+
+    generateMap();
+    characters = [];
+    bullets = [];
+    powerCubes = [];
+    particles = [];
+    kills = 0;
+    powerCollected = 0;
+    startTime = Date.now();
+    last = performance.now();
+
+    player = new Character(WORLD.width/2, WORLD.height/2, selectedBrawler, true);
+    characters.push(player);
+
+    var brawlerKeys = Object.keys(BRAWLERS);
+    var sp = [
+      {x:200,y:200},{x:2200,y:200},{x:200,y:1400},{x:2200,y:1400},
+      {x:1200,y:200},{x:1200,y:1400},{x:200,y:800},{x:2200,y:800}
+    ];
+    for(var i=0;i<7;i++){
+      var bk = brawlerKeys[Math.floor(Math.random()*brawlerKeys.length)];
+      characters.push(new Character(
+        sp[i].x+(Math.random()-0.5)*40,
+        sp[i].y+(Math.random()-0.5)*40,
+        bk, false
+      ));
+    }
+    for(var i=0;i<12;i++){
+      powerCubes.push(new PowerCube(
+        100+Math.random()*(WORLD.width-200),
+        100+Math.random()*(WORLD.height-200)
+      ));
+    }
+
+    // Hide ALL menus
+    ['gameOverMenu','startMenu','matchmakingMenu'].forEach(function(id){
+      var el = document.getElementById(id);
+      if(el){ el.classList.add('hidden'); el.style.display = 'none'; el.style.zIndex = ''; }
+    });
+
+    // Show combat UI — clear inline display so CSS works for joysticks
+    var hud = document.getElementById('hud'); if(hud) hud.style.display = 'flex';
+    var hc = document.getElementById('hcBar'); if(hc) hc.style.display = 'block';
+    var ab = document.getElementById('abilityBar'); if(ab) ab.style.display = 'flex';
+    var cur = document.getElementById('currencyBar'); if(cur) cur.style.display = 'none';
+    // CRITICAL: reset joystick inline styles so mobile CSS can show them
+    var jl = document.getElementById('joystickLeft');
+    var jr = document.getElementById('joystickRight');
+    if(jl){ jl.style.display = ''; jl.style.pointerEvents = 'auto'; }
+    if(jr){ jr.style.display = ''; jr.style.pointerEvents = 'auto'; }
+
+    gameState = STATE.playing;
+  } catch(err) {
+    console.error('startGame failed', err);
+    alert('バトル開始エラー: ' + (err.message||err));
+    gameState = STATE.menu;
+    var sm = document.getElementById('startMenu');
+    if(sm){ sm.classList.remove('hidden'); sm.style.display = 'flex'; }
+  }
+}
+
 function endGame(victory){
   window._endGameDone = true;
   gameState = STATE.gameover;
@@ -924,8 +1443,13 @@ if(mx||my){
 }
 if(rightStick.active&&(rightStick.dx||rightStick.dy))player.angle=Math.atan2(rightStick.dy,rightStick.dx);else player.angle=Math.atan2(mouse.y+camera.y-player.y,mouse.x+camera.x-player.x);
 if((mouse.down||rightStick.shooting)&&player.reload<=0)player.shoot(player.angle);
-if(keys.Space){if(player.useSuper())keys.Space=false}if(keys.KeyQ){player.useGadget();keys.KeyQ=false}if(keys.KeyE){player.useHyper();keys.KeyE=false}}
-for(const c of characters){try{if(!c.isPlayer&&c.alive)updateAI(c,dt);c.update(dt)}catch(e){console.warn("char update",e)}}
+if(keys.Space){if(player.useSuper())keys.Space=false}if(keys.KeyQ){player.useGadget();keys.KeyQ=false}if(keys.KeyE){player.useHyper();keys.KeyE=false}
+  // Multiplayer sync
+  if(mpMode && player && player.alive){
+    sendMPState();
+  }
+}
+for(const c of characters){try{if(!c.isPlayer&&c.alive&&!c.isRemote)updateAI(c,dt);if(!c.isRemote||c===player)c.update(dt);else if(c.isRemote){c.reload=Math.max(0,c.reload-dt);}}catch(e){console.warn("char update",e)}}
 for(let i=bullets.length-1;i>=0;i--){try{bullets[i].update(dt)}catch(e){bullets[i].alive=false}if(!bullets[i].alive)bullets.splice(i,1)}
 if(bullets.length>120) bullets.splice(0, bullets.length-80);
 for(let i=particles.length-1;i>=0;i--){particles[i].update(dt);if(particles[i].life<=0)particles.splice(i,1)}
@@ -944,12 +1468,16 @@ if(gameState===STATE.playing && !window._endGameDone){
   if(player && !player.alive){
     shouldEnd = true; won = false;
   } else if(player && player.alive){
-    let ea = 0;
-    for(let i=0;i<characters.length;i++){
-      const c = characters[i];
-      if(c && c.alive && c.isPlayer===false) ea++;
+    if(mpMode){
+      if(remotePlayer && !remotePlayer.alive){ shouldEnd = true; won = true; }
+    } else {
+      let ea = 0;
+      for(let i=0;i<characters.length;i++){
+        const c = characters[i];
+        if(c && c.alive && c.isPlayer===false) ea++;
+      }
+      if(ea <= 0){ shouldEnd = true; won = true; }
     }
-    if(ea <= 0){ shouldEnd = true; won = true; }
   }
   if(shouldEnd){
     // Mark done FIRST so no more frames process combat
@@ -1163,21 +1691,83 @@ document.querySelectorAll('.tab-btn').forEach(btn=>{
     if(t==='daily')updateDailyUI();
   };
 });
-document.getElementById('startBtn').onclick=()=>startMM(false);document.getElementById('rankedBtn').onclick=()=>startMM(true);
-document.getElementById('menuBtn').onclick=()=>{
-  gameState=STATE.menu;
-  const go=document.getElementById('gameOverMenu');
-  go.classList.add('hidden');go.style.display='none';
-  document.getElementById('startMenu').classList.remove('hidden');
-  document.getElementById('startMenu').style.display='flex';
-  document.getElementById('currencyBar').style.display='flex';
-  renderBrawlerSelect();
-};
-document.getElementById('restartBtn').onclick=()=>{
-  const go=document.getElementById('gameOverMenu');
-  go.classList.add('hidden');go.style.display='none';
+document.getElementById('startBtn').onclick=function(e){e&&e.preventDefault();window._endGameDone=false;mpMode=false;startMM(false);};
+document.getElementById('rankedBtn').onclick=function(e){e&&e.preventDefault();window._endGameDone=false;mpMode=false;startMM(true);};
+var fb=document.getElementById('friendBtn');
+if(fb) fb.onclick=function(e){e&&e.preventDefault();openFriendMenu();};
+var cr=document.getElementById('createRoomBtn');
+if(cr) cr.onclick=function(){createFriendRoom();};
+var jr=document.getElementById('joinRoomBtn');
+if(jr) jr.onclick=function(){joinFriendRoom();};
+var fback=document.getElementById('friendBackBtn');
+if(fback) fback.onclick=function(){closeFriendMenu();};
+
+function returnToMenu(){
+  window._endGameDone = false;
+  window._ending = false;
+  gameState = STATE.menu;
+  try {
+    characters = [];
+    bullets = [];
+    particles = [];
+    powerCubes = [];
+    player = null;
+  } catch(e) {}
+
+  // Force-hide overlays that block clicks
+  ['gameOverMenu','matchmakingMenu'].forEach(function(id){
+    var el = document.getElementById(id);
+    if(el){
+      el.classList.add('hidden');
+      el.style.display = 'none';
+      el.style.zIndex = '0';
+      el.style.pointerEvents = 'none';
+    }
+  });
+  ['hud','hcBar','abilityBar'].forEach(function(id){
+    var el = document.getElementById(id);
+    if(el) el.style.display = 'none';
+  });
+  // Reset joysticks
+  var jl = document.getElementById('joystickLeft');
+  var jr = document.getElementById('joystickRight');
+  if(jl) jl.style.display = 'none';
+  if(jr) jr.style.display = 'none';
+
+  var sm = document.getElementById('startMenu');
+  if(sm){
+    sm.classList.remove('hidden');
+    sm.style.display = 'flex';
+    sm.style.zIndex = '40';
+    sm.style.pointerEvents = 'auto';
+  }
+  var cur = document.getElementById('currencyBar');
+  if(cur){ cur.style.display = 'flex'; cur.style.zIndex = '45'; }
+
+  // Make sure play tab is visible
+  try {
+    var tabPlay = document.getElementById('tabPlay');
+    if(tabPlay) tabPlay.style.display = 'block';
+    ['tabSkins','tabCollection','tabGacha','tabDaily'].forEach(function(id){
+      var t = document.getElementById(id); if(t) t.style.display = 'none';
+    });
+    document.querySelectorAll('.tab-btn').forEach(function(b){
+      b.classList.toggle('active', b.dataset.tab === 'play');
+    });
+  } catch(e) {}
+
+  try { renderBrawlerSelect(); } catch(e) {}
+  try { updateCurrencyUI(); } catch(e) {}
+}
+
+document.getElementById('menuBtn').onclick=function(e){ if(e) e.preventDefault(); returnToMenu(); };
+document.getElementById('restartBtn').onclick=function(){
+  var go=document.getElementById('gameOverMenu');
+  if(go){ go.classList.add('hidden'); go.style.cssText=''; go.style.display='none'; }
+  window._endGameDone=false;
   startMM(isRanked);
 };
+
 (function setupGachaButtons(){
   function fireCoins(){ doGacha(false); }
   function fireGems(){ doGacha(true); }
@@ -1208,6 +1798,237 @@ document.getElementById('restartBtn').onclick=()=>{
 })();
 
 ['backFromSkins','backFromCollection','backFromGacha','backFromDaily'].forEach(id=>document.getElementById(id).onclick=()=>document.querySelector('.tab-btn[data-tab="play"]').click());
+
+// ===== Friend Multiplayer (PeerJS) =====
+var peer = null;
+var conn = null;
+var isHost = false;
+var mpMode = false;
+var remotePlayer = null;
+var lastSend = 0;
+
+function genRoomCode(){
+  var chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  var c = '';
+  for(var i=0;i<6;i++) c += chars[Math.floor(Math.random()*chars.length)];
+  return c;
+}
+
+function openFriendMenu(){
+  document.getElementById('startMenu').classList.add('hidden');
+  document.getElementById('startMenu').style.display = 'none';
+  var fm = document.getElementById('friendMenu');
+  fm.classList.remove('hidden');
+  fm.style.display = 'flex';
+  document.getElementById('friendStatus').textContent = '「ルーム作成」を押すか、コードを入力';
+  document.getElementById('roomCodeDisplay').textContent = '----';
+  var cv = document.getElementById('qrCanvas');
+  if(cv){ var ctx=cv.getContext('2d'); ctx.fillStyle='#fff'; ctx.fillRect(0,0,200,200); ctx.fillStyle='#333'; ctx.font='14px sans-serif'; ctx.textAlign='center'; ctx.fillText('ルーム作成でQR表示',100,100); }
+}
+
+function closeFriendMenu(){
+  var fm = document.getElementById('friendMenu');
+  if(fm){ fm.classList.add('hidden'); fm.style.display='none'; }
+  var sm = document.getElementById('startMenu');
+  if(sm){ sm.classList.remove('hidden'); sm.style.display='flex'; }
+  try{ if(peer){ peer.destroy(); peer=null; } }catch(e){}
+  conn = null; isHost = false;
+}
+
+function createFriendRoom(){
+  var code = genRoomCode();
+  document.getElementById('roomCodeDisplay').textContent = code;
+  document.getElementById('friendStatus').textContent = 'Peer接続中...';
+  isHost = true;
+  mpMode = true;
+
+  try {
+    peer = new Peer('ba-'+code, { debug: 1 });
+  } catch(e) {
+    document.getElementById('friendStatus').textContent = 'PeerJS読み込み失敗。ネット接続を確認';
+    return;
+  }
+
+  peer.on('open', function(id){
+    document.getElementById('friendStatus').textContent = '友達の参加を待っています...';
+    // QR encodes join instruction: room code
+    var joinData = 'BRAWL:' + code;
+    if(typeof QRCode !== 'undefined'){
+      QRCode.toCanvas(document.getElementById('qrCanvas'), joinData, {
+        width: 200, margin: 2,
+        color: { dark: '#1a1a2e', light: '#ffffff' }
+      }, function(err){
+        if(err) console.error(err);
+      });
+    }
+  });
+
+  peer.on('connection', function(c){
+    conn = c;
+    document.getElementById('friendStatus').textContent = '友達が参加！まもなく開始...';
+    setupMPConnection(c, true);
+  });
+
+  peer.on('error', function(err){
+    console.error(err);
+    document.getElementById('friendStatus').textContent = 'エラー: ' + (err.type||err.message||err) + ' — 再作成してね';
+  });
+}
+
+function joinFriendRoom(){
+  var code = (document.getElementById('joinCodeInput').value||'').trim().toUpperCase().replace(/[^A-Z0-9]/g,'');
+  if(code.length < 4){ alert('ルームコードを入力してね'); return; }
+  document.getElementById('friendStatus').textContent = '接続中...';
+  isHost = false;
+  mpMode = true;
+
+  try {
+    peer = new Peer({ debug: 1 });
+  } catch(e) {
+    document.getElementById('friendStatus').textContent = 'PeerJS読み込み失敗';
+    return;
+  }
+
+  peer.on('open', function(){
+    conn = peer.connect('ba-'+code, { reliable: true });
+    setupMPConnection(conn, false);
+  });
+
+  peer.on('error', function(err){
+    document.getElementById('friendStatus').textContent = '接続失敗: ' + (err.type||err);
+  });
+}
+
+function setupMPConnection(c, host){
+  c.on('open', function(){
+    document.getElementById('friendStatus').textContent = '接続成功！バトル開始...';
+    setTimeout(function(){ startMPGame(host); }, 600);
+  });
+  c.on('data', function(data){
+    try { handleMPData(data); } catch(e){ console.warn(e); }
+  });
+  c.on('close', function(){
+    if(mpMode && gameState===STATE.playing){
+      alert('相手が切断しました');
+      mpMode = false;
+      endGame(true);
+    }
+  });
+  c.on('error', function(err){
+    document.getElementById('friendStatus').textContent = '通信エラー';
+  });
+}
+
+function startMPGame(host){
+  // Hide friend menu
+  var fm = document.getElementById('friendMenu');
+  if(fm){ fm.classList.add('hidden'); fm.style.display='none'; }
+
+  window._endGameDone = false;
+  isRanked = false;
+  generateMap();
+  characters = []; bullets = []; powerCubes = []; particles = [];
+  kills = 0; powerCollected = 0; startTime = Date.now(); last = performance.now();
+
+  var myKey = selectedBrawler;
+  if(!BRAWLERS[myKey]) myKey = 'shelly';
+
+  if(host){
+    player = new Character(400, WORLD.height/2, myKey, true);
+    remotePlayer = new Character(WORLD.width-400, WORLD.height/2, 'colt', false);
+    remotePlayer.name = '友達';
+    remotePlayer.isRemote = true;
+  } else {
+    player = new Character(WORLD.width-400, WORLD.height/2, myKey, true);
+    remotePlayer = new Character(400, WORLD.height/2, 'shelly', false);
+    remotePlayer.name = 'ホスト';
+    remotePlayer.isRemote = true;
+  }
+  characters.push(player);
+  characters.push(remotePlayer);
+
+  // Power cubes
+  for(var i=0;i<10;i++){
+    powerCubes.push(new PowerCube(150+Math.random()*(WORLD.width-300), 150+Math.random()*(WORLD.height-300)));
+  }
+
+  ['gameOverMenu','startMenu','matchmakingMenu'].forEach(function(id){
+    var el=document.getElementById(id); if(el){ el.classList.add('hidden'); el.style.display='none'; }
+  });
+  document.getElementById('hud').style.display='flex';
+  document.getElementById('hcBar').style.display='block';
+  document.getElementById('abilityBar').style.display='flex';
+  document.getElementById('currencyBar').style.display='none';
+  var jl=document.getElementById('joystickLeft'); var jr=document.getElementById('joystickRight');
+  if(jl) jl.style.display=''; if(jr) jr.style.display='';
+
+  gameState = STATE.playing;
+  mpMode = true;
+
+  // Send hello with brawler
+  if(conn && conn.open){
+    conn.send({ t:'hello', brawler: myKey, name: (BRAWLERS[myKey]&&BRAWLERS[myKey].name)||'Player' });
+  }
+}
+
+function handleMPData(data){
+  if(!data || !data.t) return;
+  if(data.t === 'hello'){
+    if(remotePlayer && BRAWLERS[data.brawler]){
+      remotePlayer.key = data.brawler;
+      remotePlayer.b = BRAWLERS[data.brawler];
+      remotePlayer.color = BRAWLERS[data.brawler].color;
+      remotePlayer.accent = BRAWLERS[data.brawler].accent;
+      remotePlayer.name = data.name || '友達';
+      remotePlayer.maxHp = BRAWLERS[data.brawler].maxHp;
+      remotePlayer.hp = remotePlayer.maxHp;
+      remotePlayer.size = BRAWLERS[data.brawler].size;
+    }
+  } else if(data.t === 'state' && remotePlayer){
+    remotePlayer.x = data.x;
+    remotePlayer.y = data.y;
+    remotePlayer.angle = data.a;
+    remotePlayer.hp = data.hp;
+    remotePlayer.alive = data.alive;
+    if(data.vx!=null) remotePlayer.vx = data.vx;
+    if(data.vy!=null) remotePlayer.vy = data.vy;
+  } else if(data.t === 'shoot' && remotePlayer){
+    remotePlayer.angle = data.a;
+    try { remotePlayer.shoot(data.a); } catch(e){}
+  } else if(data.t === 'super' && remotePlayer){
+    remotePlayer.superC = remotePlayer.b.superCharge;
+    try { remotePlayer.useSuper(); } catch(e){}
+  } else if(data.t === 'gadget' && remotePlayer){
+    try { remotePlayer.useGadget(); } catch(e){}
+  }
+}
+
+function sendMPState(){
+  if(!mpMode || !conn || !conn.open || !player) return;
+  var now = performance.now();
+  if(now - lastSend < 50) return; // 20Hz
+  lastSend = now;
+  conn.send({
+    t:'state', x:player.x, y:player.y, a:player.angle,
+    hp:player.hp, alive:player.alive, vx:player.vx, vy:player.vy
+  });
+}
+
+// Hook into shoot for MP
+var _origShoot = null;
+
+
+var expBtn=document.getElementById('exportSaveBtn');
+if(expBtn) expBtn.onclick=function(){ exportSaveFile(); };
+var impBtn=document.getElementById('importSaveBtn');
+var impFile=document.getElementById('importSaveFile');
+if(impBtn&&impFile){
+  impBtn.onclick=function(){ impFile.click(); };
+  impFile.onchange=function(){ if(impFile.files&&impFile.files[0]){ importSaveFile(impFile.files[0]); impFile.value=''; } };
+}
+// Auto-save periodically while in menu
+setInterval(function(){ if(gameState===STATE.menu||gameState===STATE.gameover) saveData(); }, 30000);
+
 loadSave();selectedBrawler=save.selected||'shelly';if(!save.unlocked.includes(selectedBrawler))selectedBrawler='shelly';renderBrawlerSelect();requestAnimationFrame(loop);
 </script>
 </body>
