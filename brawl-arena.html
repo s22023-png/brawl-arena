@@ -137,6 +137,8 @@ canvas{display:block;background:#1e2a3a;border-radius:8px;box-shadow:0 0 40px rg
 @media(max-width:900px),(pointer:coarse),(hover:none){#joystickLeft,#joystickRight{display:block}#abilityBar{bottom:170px}#hcBar{bottom:230px}}
 /* Ability buttons larger for touch */
 #abilityBar .ability{width:64px;height:64px;font-size:12px;pointer-events:auto;touch-action:manipulation}
+#ballShootBtn.ready{border-color:#fff!important;box-shadow:0 0 16px #fff;animation:ballPulse 0.8s ease infinite}
+@keyframes ballPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}
 #abilityBar{pointer-events:auto}
 .info-box{background:rgba(0,0,0,.4);border-radius:10px;padding:8px 12px;font-size:11px;opacity:.8;max-width:400px;text-align:center;margin:6px 0}
 </style>
@@ -149,12 +151,14 @@ canvas{display:block;background:#1e2a3a;border-radius:8px;box-shadow:0 0 40px rg
 <div class="hud-box"><div class="label">KILLS</div><div class="value" id="killCount">0</div></div>
 <div class="hud-box"><div class="label">TIME</div><div class="value" id="timer">0:00</div></div>
 <div class="hud-box"><div class="label">ALIVE</div><div class="value" id="aliveCount">1</div></div>
+<div class="hud-box" id="scoreBox" style="display:none"><div class="label" id="modeLabel">SCORE</div><div class="value" id="modeScoreText">0 - 0</div></div>
 </div>
 <div id="hcBar" style="display:none"><div id="hcFill"></div></div>
 <div id="abilityBar" style="display:none">
 <div class="ability" id="gadgetBtn">GADGET<br><span style="font-size:9px">Q</span><div class="cd" id="gadgetCd"></div></div>
 <div class="ability" id="superBtn">SUPER<br><span style="font-size:9px">SPACE</span><div class="cd" id="superCd"></div></div>
 <div class="ability" id="hcBtn">HYPER<br><span style="font-size:9px">E</span><div class="cd" id="hcCd"></div></div>
+<div class="ability" id="ballShootBtn" style="display:none;border-color:#fff;background:rgba(255,255,255,0.2)">⚽ SHOOT<br><span style="font-size:9px">TAP</span></div>
 </div>
 </div>
 <div class="currency-bar" id="currencyBar">
@@ -186,6 +190,21 @@ canvas{display:block;background:#1e2a3a;border-radius:8px;box-shadow:0 0 40px rg
 <button class="btn" id="startBtn">カジュアル</button>
 <button class="btn ranked" id="rankedBtn">ランクマッチ</button>
 <button class="btn" id="friendBtn" style="background:linear-gradient(135deg,#a55eea,#00e5ff)">友達対戦</button>
+</div>
+<div style="margin-top:10px;text-align:center">
+  <div style="font-size:12px;opacity:.75;margin-bottom:6px">ゲームモード</div>
+  <div class="menu-buttons" id="modeSelect" style="gap:6px">
+    <button class="btn secondary mode-btn active" data-mode="showdown" style="padding:8px 12px;font-size:11px">ショーダウン</button>
+    <button class="btn secondary mode-btn" data-mode="brawlball" style="padding:8px 12px;font-size:11px">⚽ ブロウルボール</button>
+    <button class="btn secondary mode-btn" data-mode="basket" style="padding:8px 12px;font-size:11px">🏀 バスケ</button>
+    <button class="btn secondary mode-btn" data-mode="hockey" style="padding:8px 12px;font-size:11px">🏒 アイスホッケー</button>
+    <button class="btn secondary mode-btn" data-mode="knockout" style="padding:8px 12px;font-size:11px">ノックアウト</button>
+  </div>
+  <div style="margin-top:6px">
+    <label style="font-size:11px;opacity:.8;cursor:pointer">
+      <input type="checkbox" id="teamModeCheck" style="margin-right:4px"> チーム戦（3v3風）
+    </label>
+  </div>
 </div>
 </div>
 <div id="tabSkins" style="display:none">
@@ -229,6 +248,10 @@ canvas{display:block;background:#1e2a3a;border-radius:8px;box-shadow:0 0 40px rg
 <div id="friendMenu" class="menu hidden" style="z-index:60">
   <div class="title" style="font-size:28px">友達対戦</div>
   <div class="subtitle">QRコードを読み取って一緒にプレイ</div>
+  <div style="margin:8px 0;font-size:12px">
+    <label style="margin-right:12px;cursor:pointer"><input type="radio" name="mpTeam" value="versus" checked> 対戦（1v1）</label>
+    <label style="cursor:pointer"><input type="radio" name="mpTeam" value="coop"> 協力（味方同士でAIと戦う）</label>
+  </div>
   <div id="friendHostPanel" style="text-align:center">
     <div style="font-size:13px;opacity:.8;margin-bottom:8px">ルームを作成してQRを友達に見せてね</div>
     <canvas id="qrCanvas" width="200" height="200" style="background:#fff;border-radius:12px;padding:8px"></canvas>
@@ -599,7 +622,15 @@ setupJoystick(document.getElementById('joystickRight'),document.getElementById('
   btn.addEventListener('touchstart',e=>{e.preventDefault();e.stopPropagation();fire()},{passive:false});
   btn.addEventListener('click',fire);
 });
-const WORLD={width:2400,height:1600},obstacles=[];
+const WORLD={width:2400,height:1600};
+let obstacles=[];
+let gameMode='showdown'; // showdown | brawlball | basket | knockout | hockey
+let teamMode=false; // 3v3 style for modes that support it
+let modeScore={blue:0,red:0};
+let modeTimer=0;
+let modeLimit=120;
+let ball=null;
+
 function generateMap(){obstacles.length=0;obstacles.push({x:0,y:0,w:WORLD.width,h:40,type:'wall'},{x:0,y:WORLD.height-40,w:WORLD.width,h:40,type:'wall'},{x:0,y:0,w:40,h:WORLD.height,type:'wall'},{x:WORLD.width-40,y:0,w:40,h:WORLD.height,type:'wall'});[{x:400,y:300,w:180,h:40},{x:400,y:300,w:40,h:180},{x:1800,y:300,w:180,h:40},{x:1940,y:300,w:40,h:180},{x:400,y:1100,w:180,h:40},{x:400,y:960,w:40,h:180},{x:1800,y:1100,w:180,h:40},{x:1940,y:960,w:40,h:180},{x:1000,y:700,w:400,h:40},{x:1100,y:500,w:40,h:200},{x:1100,y:900,w:40,h:200},{x:700,y:600,w:120,h:120},{x:1580,y:600,w:120,h:120},{x:900,y:200,w:100,h:80},{x:1400,y:200,w:100,h:80},{x:900,y:1320,w:100,h:80},{x:1400,y:1320,w:100,h:80}].forEach(o=>obstacles.push({...o,type:'box',hp:800}))}
 
 class Entity{constructor(x,y){this.x=x;this.y=y;this.vx=0;this.vy=0;this.alive=true}}
@@ -617,8 +648,20 @@ this.hasSP=!!save.starPowers[key];
 if(this.hasSP){if(this.b.starPower.name.includes('ダメージ')||this.b.starPower.name.includes('強化'))this.b=Object.assign({},this.b,{damage:this.b.damage*1.15});if(this.b.starPower.name.includes('HP')||this.b.starPower.name.includes('タフ')){this.maxHp*=1.12;this.hp=this.maxHp}}
 }
 get dmg(){let d=this.b.damage*(1+this.power*.12);if(this.hcActive)d*=this.b.hyper.mult;return d}
-get spd(){let s=this.b.speed*(1+this.power*.04);if(this.speedBoost>0)s*=1.5;if(this.hcActive)s*=1.15;return s}
-takeDamage(amt,from){if(this.invuln>0||!this.alive||this.invisible)return;if(this.shield>0){this.shield-=amt;if(this.shield<0){amt=-this.shield;this.shield=0}else return}this.hp-=amt;this.invuln=.1;spawnP(this.x,this.y,this.color,4,2);if(this.hp<=0){this.hp=0;this.alive=false;spawnP(this.x,this.y,this.color,22,5);if(from&&from.isPlayer){kills++;from.superC=Math.min(from.b.superCharge,from.superC+2);from.hcCharge=Math.min(100,from.hcCharge+25)}if(from)from.kills++;for(let i=0;i<1+Math.floor(this.power/2);i++)powerCubes.push(new PowerCube(this.x+(Math.random()-.5)*40,this.y+(Math.random()-.5)*40))}}
+get spd(){let s=this.b.speed*1.12*(1+this.power*.04);if(this.speedBoost>0)s*=1.45;if(this.hcActive)s*=1.12;if(this.dashAtk)s*=1.0;return s}
+takeDamage(amt,from){if(this.invuln>0||!this.alive||this.invisible)return;if(this.shield>0){this.shield-=amt;if(this.shield<0){amt=-this.shield;this.shield=0}else return}this.hp-=amt;this.invuln=.1;spawnP(this.x,this.y,this.color,4,2);if(this.hp<=0){this.hp=0;this.alive=false;spawnP(this.x,this.y,this.color,22,5);
+      if(gameMode==='knockout'&&typeof this.lives==='number'){
+        this.lives--;
+        if(this.lives>0){
+          var self=this;
+          setTimeout(function(){
+            self.alive=true; self.hp=self.maxHp;
+            self.x = self.team==='blue'?200:WORLD.width-200;
+            self.y = WORLD.height/2+(Math.random()-0.5)*150;
+          },1500);
+        }
+      }
+if(from&&from.isPlayer){kills++;from.superC=Math.min(from.b.superCharge,from.superC+2);from.hcCharge=Math.min(100,from.hcCharge+25)}if(from)from.kills++;for(let i=0;i<1+Math.floor(this.power/2);i++)powerCubes.push(new PowerCube(this.x+(Math.random()-.5)*40,this.y+(Math.random()-.5)*40))}}
 applyPoison(dps,dur){this.poisonDps=Math.max(this.poisonDps||0,dps);this.poisonT=Math.max(this.poisonT||0,dur)}
 applyBurn(dps,dur){this.burnDps=Math.max(this.burnDps||0,dps);this.burnT=Math.max(this.burnT||0,dur)}
 shoot(a){
@@ -787,7 +830,7 @@ if(this.poisonT>0){this.poisonT-=dt;this.hp-=this.poisonDps*dt;if(this.hp<=0){th
 if(this.burnT>0){this.burnT-=dt;this.hp-=this.burnDps*dt;if(this.hp<=0){this.hp=0;this.alive=false}}
 if(this.invisible){this.invisT-=dt;if(this.invisT<=0)this.invisible=false}
 if(this.chargeActive){this.chargeT-=dt;for(const e of characters)if(e!==this&&e.alive&&dist(this,e)<this.size+e.size+10)e.takeDamage(this.dmg*.3,this);if(this.chargeT<=0){this.chargeActive=false;this.vx*=.3;this.vy*=.3}}
-if(!this.chargeActive){this.vx*=0.78;this.vy*=0.78}
+if(!this.chargeActive&&!this.dashAtk){this.vx*=0.72;this.vy*=0.72}
 let nx=this.x+this.vx,ny=this.y+this.vy;
 for(const o of obstacles){if(o.type==='box'&&o.hp<=0)continue;if(circRect(nx,this.y,this.size,o)){nx=this.x;this.vx=0}if(circRect(this.x,ny,this.size,o)){ny=this.y;this.vy=0}}
 this.x=Math.max(50,Math.min(WORLD.width-50,nx));this.y=Math.max(50,Math.min(WORLD.height-50,ny));
@@ -1034,7 +1077,8 @@ ctx.fillStyle='rgba(255,255,255,0.25)';ctx.fillRect(bx,by,bw*hr,2);
 
 ctx.font='bold 10px Nunito';ctx.textAlign='center';ctx.fillStyle=this.isPlayer?'#00e5ff':'#fff';
 ctx.shadowColor='rgba(0,0,0,0.7)';ctx.shadowBlur=3;
-ctx.fillText(this.name+(this.power>0?` ★${this.power}`:''),sx,by-5);
+const teamTag=this.team==='blue'?'🔵':(this.team==='red'?'🔴':'');
+ctx.fillText(teamTag+this.name+(this.power>0?` ★${this.power}`:''),sx,by-5);
 // Status icons
 if(this.poisonT>0){ctx.font='12px sans-serif';ctx.fillText('☠️',sx-12,by-16)}
 if(this.burnT>0){ctx.font='12px sans-serif';ctx.fillText('🔥',sx+12,by-16)}
@@ -1140,6 +1184,7 @@ update(dt){
   }
   for(const c of characters){
     if(c===this.owner||!c.alive)continue;
+    if(this.owner&&c.team&&this.owner.team&&c.team===this.owner.team&&c.team!=='solo')continue;
     if(dist(this,c)<this.size+c.size){
       c.takeDamage(this.dmg,this.owner);
       if(this.pois) c.applyPoison(55,3.5);
@@ -1214,6 +1259,162 @@ draw(cx,cy){
 }
 }
 
+
+// ===== Mode: Ball (soccer / basket / hockey) =====
+class Ball {
+  constructor(x,y){
+    this.x=x; this.y=y; this.vx=0; this.vy=0;
+    this.r=14; this.owner=null; this.alive=true;
+  }
+  update(dt){
+    if(this.owner && this.owner.alive){
+      this.x = this.owner.x + Math.cos(this.owner.angle)* (this.owner.size+16);
+      this.y = this.owner.y + Math.sin(this.owner.angle)* (this.owner.size+16);
+      this.vx = this.owner.vx; this.vy = this.owner.vy;
+      return;
+    }
+    this.owner = null;
+    this.x += this.vx; this.y += this.vy;
+    this.vx *= 0.985; this.vy *= 0.985;
+    // bounce walls
+    if(this.x < 50){ this.x=50; this.vx*=-0.8; }
+    if(this.x > WORLD.width-50){ this.x=WORLD.width-50; this.vx*=-0.8; }
+    if(this.y < 50){ this.y=50; this.vy*=-0.8; }
+    if(this.y > WORLD.height-50){ this.y=WORLD.height-50; this.vy*=-0.8; }
+    // obstacles
+    for(const o of obstacles){
+      if(o.type==='box'&&o.hp<=0) continue;
+      if(circRect(this.x,this.y,this.r,o)){
+        const cx=o.x+o.w/2, cy=o.y+o.h/2;
+        if(Math.abs(this.x-cx)>Math.abs(this.y-cy)) this.vx*=-0.85; else this.vy*=-0.85;
+        this.x += this.vx; this.y += this.vy;
+      }
+    }
+    // pickup
+    for(const c of characters){
+      if(!c.alive) continue;
+      if(dist(this,c) < this.r+c.size){
+        // kick if moving into ball
+        const sp = Math.hypot(c.vx,c.vy);
+        if(sp > 1.5 && !this.owner){
+          this.vx = c.vx * 2.2 + Math.cos(c.angle)*4;
+          this.vy = c.vy * 2.2 + Math.sin(c.angle)*4;
+        } else if(sp < 1.2 && Math.hypot(this.vx,this.vy)<2){
+          this.owner = c;
+        }
+      }
+    }
+  }
+  shoot(ang, power){
+    this.owner = null;
+    this.vx = Math.cos(ang)*power;
+    this.vy = Math.sin(ang)*power;
+  }
+  draw(cx,cy){
+    const sx=this.x-cx, sy=this.y-cy;
+    ctx.beginPath(); ctx.arc(sx,sy,this.r+2,0,6.28); ctx.fillStyle='rgba(0,0,0,0.3)'; ctx.fill();
+    if(gameMode==='hockey'){
+      ctx.beginPath(); ctx.arc(sx,sy,this.r,0,6.28); ctx.fillStyle='#dfe6e9'; ctx.fill();
+      ctx.strokeStyle='#636e72'; ctx.lineWidth=2; ctx.stroke();
+    } else if(gameMode==='basket'){
+      ctx.beginPath(); ctx.arc(sx,sy,this.r,0,6.28); ctx.fillStyle='#e67e22'; ctx.fill();
+      ctx.strokeStyle='#fff'; ctx.lineWidth=1.5;
+      ctx.beginPath(); ctx.arc(sx,sy,this.r*0.6,0,6.28); ctx.stroke();
+    } else {
+      // soccer
+      ctx.beginPath(); ctx.arc(sx,sy,this.r,0,6.28); ctx.fillStyle='#fff'; ctx.fill();
+      ctx.strokeStyle='#222'; ctx.lineWidth=2; ctx.stroke();
+      ctx.beginPath(); ctx.arc(sx,sy,5,0,6.28); ctx.fillStyle='#222'; ctx.fill();
+    }
+  }
+}
+
+function setupModeMap(){
+  if(gameMode==='showdown'||gameMode==='knockout'){
+    WORLD.width=2600; WORLD.height=1800;
+  } else {
+    // 3v3 style smaller pitch
+    WORLD.width=2000; WORLD.height=1200;
+  }
+  generateMap();
+  // Mode-specific goals / hoops
+  if(gameMode==='brawlball'||gameMode==='hockey'){
+    // clear center obstacles a bit - goals as special zones stored on window
+    window.goals = {
+      blue: {x:40, y:WORLD.height/2-90, w:50, h:180},
+      red: {x:WORLD.width-90, y:WORLD.height/2-90, w:50, h:180}
+    };
+  } else if(gameMode==='basket'){
+    window.goals = {
+      blue: {x:80, y:WORLD.height/2-40, w:30, h:80},
+      red: {x:WORLD.width-110, y:WORLD.height/2-40, w:30, h:80}
+    };
+  } else {
+    window.goals = null;
+  }
+}
+
+function resetBall(){
+  ball = new Ball(WORLD.width/2, WORLD.height/2);
+  ball.vx=0; ball.vy=0; ball.owner=null;
+}
+
+function checkGoals(){
+  if(!ball || !window.goals) return;
+  const g = window.goals;
+  function inGoal(zone){
+    return ball.x>zone.x && ball.x<zone.x+zone.w && ball.y>zone.y && ball.y<zone.y+zone.h;
+  }
+  if(inGoal(g.blue)){
+    modeScore.red++;
+    spawnP(ball.x,ball.y,'#e74c3c',20,6);
+    resetBall();
+    // reset positions briefly
+    snapTeamsToSpawn();
+  } else if(inGoal(g.red)){
+    modeScore.blue++;
+    spawnP(ball.x,ball.y,'#3498db',20,6);
+    resetBall();
+    snapTeamsToSpawn();
+  }
+  // Win at 3 for ball modes, 5 for basket
+  const limit = gameMode==='basket'?5:3;
+  if(modeScore.blue>=limit || modeScore.red>=limit){
+    const won = (player && player.team==='blue') ? modeScore.blue>modeScore.red : modeScore.red>modeScore.blue;
+    if(!window._endGameDone) endGame(won);
+  }
+}
+
+function snapTeamsToSpawn(){
+  for(const c of characters){
+    if(!c.alive){ c.alive=true; c.hp=c.maxHp; } // respawn for ball modes
+    if(c.team==='blue'){ c.x=200+Math.random()*80; c.y=WORLD.height/2+(Math.random()-0.5)*200; }
+    else { c.x=WORLD.width-200-Math.random()*80; c.y=WORLD.height/2+(Math.random()-0.5)*200; }
+    c.vx=0; c.vy=0;
+  }
+}
+
+function drawGoals(cx,cy){
+  if(!window.goals) return;
+  const g=window.goals;
+  // blue goal (left)
+  ctx.fillStyle = gameMode==='basket' ? 'rgba(52,152,219,0.35)' : 'rgba(52,152,219,0.45)';
+  ctx.fillRect(g.blue.x-cx, g.blue.y-cy, g.blue.w, g.blue.h);
+  ctx.strokeStyle='#3498db'; ctx.lineWidth=3;
+  ctx.strokeRect(g.blue.x-cx, g.blue.y-cy, g.blue.w, g.blue.h);
+  // red goal (right)
+  ctx.fillStyle = gameMode==='basket' ? 'rgba(231,76,60,0.35)' : 'rgba(231,76,60,0.45)';
+  ctx.fillRect(g.red.x-cx, g.red.y-cy, g.red.w, g.red.h);
+  ctx.strokeStyle='#e74c3c'; ctx.lineWidth=3;
+  ctx.strokeRect(g.red.x-cx, g.red.y-cy, g.red.w, g.red.h);
+  // center line
+  ctx.strokeStyle='rgba(255,255,255,0.15)'; ctx.lineWidth=2;
+  ctx.setLineDash([10,8]);
+  ctx.beginPath(); ctx.moveTo(WORLD.width/2-cx, 40-cy); ctx.lineTo(WORLD.width/2-cx, WORLD.height-40-cy); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.beginPath(); ctx.arc(WORLD.width/2-cx, WORLD.height/2-cy, 60, 0, 6.28); ctx.stroke();
+}
+
 class PowerCube extends Entity{constructor(x,y){super(x,y);this.bob=Math.random()*6.28}update(dt){this.bob+=dt*4}draw(cx,cy){const sx=this.x-cx,sy=this.y-cy+Math.sin(this.bob)*3;ctx.beginPath();ctx.arc(sx,sy,13,0,6.28);ctx.fillStyle='rgba(255,215,0,.18)';ctx.fill();ctx.save();ctx.translate(sx,sy);ctx.rotate(this.bob*.3);ctx.fillStyle='#ffd700';ctx.fillRect(-7,-7,14,14);ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.strokeRect(-7,-7,14,14);ctx.restore()}}
 class Particle{constructor(x,y,c,sp){this.x=x;this.y=y;this.vx=(Math.random()-.5)*sp*2;this.vy=(Math.random()-.5)*sp*2;this.life=.25+Math.random()*.3;this.max=this.life;this.c=c;this.s=1.5+Math.random()*2.5}update(dt){this.x+=this.vx;this.y+=this.vy;this.vx*=.93;this.vy*=.93;this.life-=dt}draw(cx,cy){const a=this.life/this.max;ctx.globalAlpha=a;ctx.beginPath();ctx.arc(this.x-cx,this.y-cy,this.s*a,0,6.28);ctx.fillStyle=this.c;ctx.fill();ctx.globalAlpha=1}}
 function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
@@ -1275,7 +1476,14 @@ function startGame(){
     window._endGameDone = false;
     window._ending = false;
 
-    generateMap();
+    // Mode setup
+    teamMode = !!(document.getElementById('teamModeCheck')&&document.getElementById('teamModeCheck').checked);
+    modeScore = {blue:0, red:0};
+    modeTimer = 0;
+    modeLimit = (gameMode==='knockout')?180:120;
+    ball = null;
+    setupModeMap();
+
     characters = [];
     bullets = [];
     powerCubes = [];
@@ -1285,27 +1493,67 @@ function startGame(){
     startTime = Date.now();
     last = performance.now();
 
-    player = new Character(WORLD.width/2, WORLD.height/2, selectedBrawler, true);
-    characters.push(player);
-
     var brawlerKeys = Object.keys(BRAWLERS);
-    var sp = [
-      {x:200,y:200},{x:2200,y:200},{x:200,y:1400},{x:2200,y:1400},
-      {x:1200,y:200},{x:1200,y:1400},{x:200,y:800},{x:2200,y:800}
-    ];
-    for(var i=0;i<7;i++){
-      var bk = brawlerKeys[Math.floor(Math.random()*brawlerKeys.length)];
-      characters.push(new Character(
-        sp[i].x+(Math.random()-0.5)*40,
-        sp[i].y+(Math.random()-0.5)*40,
-        bk, false
-      ));
+    function randB(){ return brawlerKeys[Math.floor(Math.random()*brawlerKeys.length)]; }
+
+    if(gameMode==='showdown' && !teamMode){
+      // Solo showdown - large map BR
+      player = new Character(WORLD.width/2, WORLD.height/2, selectedBrawler, true);
+      player.team = 'solo';
+      characters.push(player);
+      var sp = [
+        {x:200,y:200},{x:WORLD.width-200,y:200},{x:200,y:WORLD.height-200},{x:WORLD.width-200,y:WORLD.height-200},
+        {x:WORLD.width/2,y:200},{x:WORLD.width/2,y:WORLD.height-200},{x:200,y:WORLD.height/2},{x:WORLD.width-200,y:WORLD.height/2}
+      ];
+      for(var i=0;i<7;i++){
+        var bot = new Character(sp[i].x+(Math.random()-0.5)*40, sp[i].y+(Math.random()-0.5)*40, randB(), false);
+        bot.team = 'solo';
+        characters.push(bot);
+      }
+      for(var i=0;i<14;i++) powerCubes.push(new PowerCube(100+Math.random()*(WORLD.width-200),100+Math.random()*(WORLD.height-200)));
+    } else if(gameMode==='knockout'){
+      // Knockout: lives system - no heal from cubes much, 3v3 or solo
+      teamMode = true;
+      player = new Character(250, WORLD.height/2, selectedBrawler, true);
+      player.team = 'blue'; player.lives = 3;
+      characters.push(player);
+      for(var i=0;i<2;i++){
+        var a=new Character(200+i*40, WORLD.height/2-80+i*80, randB(), false);
+        a.team='blue'; a.lives=3; characters.push(a);
+      }
+      for(var i=0;i<3;i++){
+        var b=new Character(WORLD.width-250-i*30, WORLD.height/2-80+i*80, randB(), false);
+        b.team='red'; b.lives=3; characters.push(b);
+      }
+    } else {
+      // Team modes: brawlball, basket, hockey, or team showdown
+      player = new Character(250, WORLD.height/2, selectedBrawler, true);
+      player.team = 'blue';
+      characters.push(player);
+      // blue teammates
+      for(var i=0;i<2;i++){
+        var a=new Character(180+i*50, WORLD.height/2-100+i*100, randB(), false);
+        a.team='blue'; characters.push(a);
+      }
+      // red team
+      for(var i=0;i<3;i++){
+        var b=new Character(WORLD.width-220-i*40, WORLD.height/2-100+i*100, randB(), false);
+        b.team='red'; characters.push(b);
+      }
+      if(gameMode==='brawlball'||gameMode==='basket'||gameMode==='hockey'){
+        resetBall();
+      } else {
+        for(var i=0;i<10;i++) powerCubes.push(new PowerCube(100+Math.random()*(WORLD.width-200),100+Math.random()*(WORLD.height-200)));
+      }
     }
-    for(var i=0;i<12;i++){
-      powerCubes.push(new PowerCube(
-        100+Math.random()*(WORLD.width-200),
-        100+Math.random()*(WORLD.height-200)
-      ));
+
+    // Score HUD
+    var sb=document.getElementById('scoreBox');
+    if(sb){
+      if(gameMode==='brawlball'||gameMode==='basket'||gameMode==='hockey'||gameMode==='knockout'){
+        sb.style.display='block';
+        document.getElementById('modeLabel').textContent = gameMode==='knockout'?'KNOCKOUT':gameMode.toUpperCase();
+      } else sb.style.display='none';
     }
 
     // Hide ALL menus
@@ -1404,7 +1652,7 @@ function endGame(victory){
   }
 }
 
-function updateAI(bot,dt){bot.aiT-=dt;let n=null,nd=1e9;for(const c of characters){if(c===bot||!c.alive||c.invisible)continue;const d=dist(bot,c);if(d<nd){nd=d;n=c}}let nc=null,cd=1e9;if(bot.power<5)for(const p of powerCubes){const d=dist(bot,p);if(d<cd){cd=d;nc=p}}
+function updateAI(bot,dt){bot.aiT-=dt;let n=null,nd=1e9;for(const c of characters){if(c===bot||!c.alive||c.invisible)continue;if(bot.team&&c.team&&bot.team===c.team&&bot.team!=='solo')continue;const d=dist(bot,c);if(d<nd){nd=d;n=c}}let nc=null,cd=1e9;if(bot.power<5)for(const p of powerCubes){const d=dist(bot,p);if(d<cd){cd=d;nc=p}}
 if(bot.aiT<=0){bot.aiT=.2+Math.random()*.35;if(n&&nd<550){bot.aiState='atk';bot.aiTarget=n}else if(nc&&cd<380){bot.aiState='cube';bot.aiTarget=nc}else{bot.aiState='wand';bot.wanderA=Math.random()*6.28}}
 if(bot.aiState==='atk'&&bot.aiTarget&&bot.aiTarget.alive){const a=Math.atan2(bot.aiTarget.y-bot.y,bot.aiTarget.x-bot.x);bot.angle=a;const ideal=bot.b.range*.55;if(nd>ideal+40){bot.vx+=Math.cos(a)*bot.spd*1.1*bot.aiSkill;bot.vy+=Math.sin(a)*bot.spd*1.1*bot.aiSkill}else if(nd<ideal-50){bot.vx-=Math.cos(a)*bot.spd*.7;bot.vy-=Math.sin(a)*bot.spd*.7}else bot.vx+=Math.cos(a+1.57)*bot.spd*.45*(Math.random()>.5?1:-1);
 if(nd<bot.b.range*.9&&Math.random()<.05+bot.aiSkill*.04)bot.shoot(a);if(bot.superC>=bot.b.superCharge&&nd<350&&Math.random()<.015*bot.aiSkill)bot.useSuper();if(bot.hcCharge>=100&&nd<400&&Math.random()<.01)bot.useHyper();if(bot.gadgetCd<=0&&nd<300&&Math.random()<.008)bot.useGadget()}
@@ -1433,12 +1681,12 @@ function upd(dt){if(player&&player.alive){let mx=0,my=0;if(keys.KeyW||keys.Arrow
 // Brawl Stars-like: smooth acceleration, normalized diagonal, slight boost
 if(mx||my){
   const l=Math.hypot(mx,my)||1;
-  const ax=(mx/l)*player.spd*1.35;  // acceleration factor
-  const ay=(my/l)*player.spd*1.35;
+  const ax=(mx/l)*player.spd*1.55;
+  const ay=(my/l)*player.spd*1.55;
   player.vx+=ax;player.vy+=ay;
   // soft speed cap so it doesn't feel floaty
   const sp=Math.hypot(player.vx,player.vy);
-  const maxSp=player.spd*3.2;
+  const maxSp=player.spd*2.85;
   if(sp>maxSp){player.vx=(player.vx/sp)*maxSp;player.vy=(player.vy/sp)*maxSp}
 }
 if(rightStick.active&&(rightStick.dx||rightStick.dy))player.angle=Math.atan2(rightStick.dy,rightStick.dx);else player.angle=Math.atan2(mouse.y+camera.y-player.y,mouse.x+camera.x-player.x);
@@ -1454,6 +1702,40 @@ for(let i=bullets.length-1;i>=0;i--){try{bullets[i].update(dt)}catch(e){bullets[
 if(bullets.length>120) bullets.splice(0, bullets.length-80);
 for(let i=particles.length-1;i>=0;i--){particles[i].update(dt);if(particles[i].life<=0)particles.splice(i,1)}
 for(const p of powerCubes)p.update(dt);
+if(ball){ try{ ball.update(dt); checkGoals(); }catch(e){} }
+// Ball shoot: SPACE or touch button
+if(ball && player){
+  var hold = (ball.owner===player);
+  var bsb = document.getElementById('ballShootBtn');
+  if(bsb){
+    bsb.style.display = hold ? 'flex' : 'none';
+    if(hold) bsb.classList.add('ready'); else bsb.classList.remove('ready');
+  }
+  if(hold && keys.Space){
+    ball.shoot(player.angle, 15);
+    keys.Space=false;
+    if(mpMode && conn && conn.open) try{ conn.send({t:'ballShoot', a:player.angle, p:15}); }catch(e){}
+  }
+}
+if(gameMode!=='showdown'||teamMode){
+  modeTimer += dt;
+  if(modeTimer >= modeLimit && !window._endGameDone){
+    if(gameMode==='brawlball'||gameMode==='basket'||gameMode==='hockey'){
+      const won = player && ((player.team==='blue'&&modeScore.blue>=modeScore.red)||(player.team==='red'&&modeScore.red>=modeScore.blue));
+      endGame(!!won && modeScore.blue!==modeScore.red);
+    }
+  }
+}
+try{
+  const mst=document.getElementById('modeScoreText');
+  if(mst && (gameMode==='brawlball'||gameMode==='basket'||gameMode==='hockey'))
+    mst.textContent = modeScore.blue+' - '+modeScore.red;
+  if(mst && gameMode==='knockout'){
+    const bl=characters.filter(c=>c.team==='blue'&&c.alive).length;
+    const rl=characters.filter(c=>c.team==='red'&&c.alive).length;
+    mst.textContent = bl+' vs '+rl;
+  }
+}catch(e){}
 if(player){camera.x+=((player.x-canvas.width/2)-camera.x)*.06;camera.y+=((player.y-canvas.height/2)-camera.y)*.06;camera.x=Math.max(0,Math.min(WORLD.width-canvas.width,camera.x));camera.y=Math.max(0,Math.min(WORLD.height-canvas.height,camera.y))}
 const al=characters.filter(c=>c.alive).length;try{
   const kc=document.getElementById('killCount'); if(kc) kc.textContent=kills;
@@ -1468,8 +1750,17 @@ if(gameState===STATE.playing && !window._endGameDone){
   if(player && !player.alive){
     shouldEnd = true; won = false;
   } else if(player && player.alive){
-    if(mpMode){
+    if(mpMode && mpCoop){
+      const enemies = characters.filter(c=>c.alive && c.team==='red');
+      if(enemies.length===0){ shouldEnd = true; won = true; }
+    } else if(mpMode && !mpCoop){
       if(remotePlayer && !remotePlayer.alive){ shouldEnd = true; won = true; }
+    } else if(gameMode==='brawlball'||gameMode==='basket'||gameMode==='hockey'){
+      // ended by score in checkGoals
+    } else if(teamMode || gameMode==='knockout'){
+      const myTeam = player.team;
+      const enemies = characters.filter(c=>c.alive && c.team && c.team!==myTeam);
+      if(enemies.length===0){ shouldEnd = true; won = true; }
     } else {
       let ea = 0;
       for(let i=0;i<characters.length;i++){
@@ -1538,6 +1829,8 @@ for(const o of obstacles){
     ctx.strokeStyle='#5d4037';ctx.lineWidth=2;ctx.strokeRect(sx,sy,o.w,o.h);
   }
 }
+try{ drawGoals(camera.x,camera.y); }catch(e){}
+if(ball) try{ ball.draw(camera.x,camera.y); }catch(e){}
 for(const p of powerCubes)p.draw(camera.x,camera.y);for(const b of bullets){try{b.draw(camera.x,camera.y)}catch(e){}}for(const c of characters){try{c.draw(camera.x,camera.y)}catch(e){}}for(const p of particles)p.draw(camera.x,camera.y);
 const mw=140,mh=90,mx=canvas.width-mw-6,my=6,sx=mw/WORLD.width,sy=mh/WORLD.height;ctx.fillStyle='rgba(0,0,0,.5)';ctx.fillRect(mx-2,my-2,mw+4,mh+4);ctx.strokeStyle='rgba(255,255,255,.15)';ctx.lineWidth=1.5;ctx.strokeRect(mx-2,my-2,mw+4,mh+4);
 ctx.fillStyle='rgba(90,70,50,.5)';for(const o of obstacles){if(o.type==='box'&&o.hp<=0)continue;ctx.fillRect(mx+o.x*sx,my+o.y*sy,Math.max(1.5,o.w*sx),Math.max(1.5,o.h*sy))}
@@ -1695,6 +1988,15 @@ document.getElementById('startBtn').onclick=function(e){e&&e.preventDefault();wi
 document.getElementById('rankedBtn').onclick=function(e){e&&e.preventDefault();window._endGameDone=false;mpMode=false;startMM(true);};
 var fb=document.getElementById('friendBtn');
 if(fb) fb.onclick=function(e){e&&e.preventDefault();openFriendMenu();};
+document.querySelectorAll('.mode-btn').forEach(function(btn){
+  btn.onclick=function(){
+    document.querySelectorAll('.mode-btn').forEach(function(b){ b.classList.remove('active'); b.style.borderColor='transparent'; });
+    btn.classList.add('active');
+    btn.style.borderColor='#00e5ff';
+    gameMode = btn.dataset.mode || 'showdown';
+  };
+});
+
 var cr=document.getElementById('createRoomBtn');
 if(cr) cr.onclick=function(){createFriendRoom();};
 var jr=document.getElementById('joinRoomBtn');
@@ -1806,6 +2108,7 @@ var isHost = false;
 var mpMode = false;
 var remotePlayer = null;
 var lastSend = 0;
+var mpCoop = false; // friends on same team vs AI
 
 function genRoomCode(){
   var chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -1841,6 +2144,9 @@ function createFriendRoom(){
   document.getElementById('friendStatus').textContent = 'Peer接続中...';
   isHost = true;
   mpMode = true;
+  var coopEl = document.querySelector('input[name="mpTeam"]:checked');
+  mpCoop = !!(coopEl && coopEl.value==='coop');
+
 
   try {
     peer = new Peer('ba-'+code, { debug: 1 });
@@ -1920,36 +2226,87 @@ function setupMPConnection(c, host){
 }
 
 function startMPGame(host){
-  // Hide friend menu
   var fm = document.getElementById('friendMenu');
   if(fm){ fm.classList.add('hidden'); fm.style.display='none'; }
 
   window._endGameDone = false;
   isRanked = false;
-  generateMap();
+  mpMode = true;
+
+  // Read coop flag from host message or local
+  if(host){
+    var coopEl = document.querySelector('input[name="mpTeam"]:checked');
+    mpCoop = !!(coopEl && coopEl.value==='coop');
+  }
+
+  teamMode = mpCoop || (gameMode!=='showdown');
+  modeScore = {blue:0, red:0};
+  modeTimer = 0;
+  ball = null;
+  setupModeMap();
+
   characters = []; bullets = []; powerCubes = []; particles = [];
   kills = 0; powerCollected = 0; startTime = Date.now(); last = performance.now();
 
   var myKey = selectedBrawler;
   if(!BRAWLERS[myKey]) myKey = 'shelly';
+  var brawlerKeys = Object.keys(BRAWLERS);
+  function randB(){ return brawlerKeys[Math.floor(Math.random()*brawlerKeys.length)]; }
 
-  if(host){
-    player = new Character(400, WORLD.height/2, myKey, true);
-    remotePlayer = new Character(WORLD.width-400, WORLD.height/2, 'colt', false);
-    remotePlayer.name = '友達';
-    remotePlayer.isRemote = true;
+  if(mpCoop){
+    // Friends on BLUE team together vs RED AI
+    if(host){
+      player = new Character(280, WORLD.height/2, myKey, true);
+      player.team = 'blue';
+      remotePlayer = new Character(220, WORLD.height/2-70, 'colt', false);
+      remotePlayer.name = '友達';
+      remotePlayer.team = 'blue';
+      remotePlayer.isRemote = true;
+    } else {
+      player = new Character(220, WORLD.height/2-70, myKey, true);
+      player.team = 'blue';
+      remotePlayer = new Character(280, WORLD.height/2, 'shelly', false);
+      remotePlayer.name = 'ホスト';
+      remotePlayer.team = 'blue';
+      remotePlayer.isRemote = true;
+    }
+    characters.push(player);
+    characters.push(remotePlayer);
+    // one more blue AI ally optional
+    var ally = new Character(200, WORLD.height/2+80, randB(), false);
+    ally.team = 'blue';
+    characters.push(ally);
+    // red AI enemies
+    for(var i=0;i<3;i++){
+      var en = new Character(WORLD.width-250-i*40, WORLD.height/2-90+i*90, randB(), false);
+      en.team = 'red';
+      characters.push(en);
+    }
   } else {
-    player = new Character(WORLD.width-400, WORLD.height/2, myKey, true);
-    remotePlayer = new Character(400, WORLD.height/2, 'shelly', false);
-    remotePlayer.name = 'ホスト';
-    remotePlayer.isRemote = true;
+    // 1v1 versus
+    if(host){
+      player = new Character(400, WORLD.height/2, myKey, true);
+      player.team = 'blue';
+      remotePlayer = new Character(WORLD.width-400, WORLD.height/2, 'colt', false);
+      remotePlayer.name = '友達';
+      remotePlayer.team = 'red';
+      remotePlayer.isRemote = true;
+    } else {
+      player = new Character(WORLD.width-400, WORLD.height/2, myKey, true);
+      player.team = 'red';
+      remotePlayer = new Character(400, WORLD.height/2, 'shelly', false);
+      remotePlayer.name = 'ホスト';
+      remotePlayer.team = 'blue';
+      remotePlayer.isRemote = true;
+    }
+    characters.push(player);
+    characters.push(remotePlayer);
   }
-  characters.push(player);
-  characters.push(remotePlayer);
 
-  // Power cubes
-  for(var i=0;i<10;i++){
-    powerCubes.push(new PowerCube(150+Math.random()*(WORLD.width-300), 150+Math.random()*(WORLD.height-300)));
+  if(gameMode==='brawlball'||gameMode==='basket'||gameMode==='hockey'){
+    resetBall();
+  } else {
+    for(var i=0;i<10;i++) powerCubes.push(new PowerCube(150+Math.random()*(WORLD.width-300),150+Math.random()*(WORLD.height-300)));
   }
 
   ['gameOverMenu','startMenu','matchmakingMenu'].forEach(function(id){
@@ -1961,19 +2318,26 @@ function startMPGame(host){
   document.getElementById('currencyBar').style.display='none';
   var jl=document.getElementById('joystickLeft'); var jr=document.getElementById('joystickRight');
   if(jl) jl.style.display=''; if(jr) jr.style.display='';
+  var sb=document.getElementById('scoreBox');
+  if(sb){
+    if(gameMode==='brawlball'||gameMode==='basket'||gameMode==='hockey'||mpCoop){
+      sb.style.display='block';
+      document.getElementById('modeLabel').textContent = mpCoop ? 'CO-OP' : gameMode.toUpperCase();
+    } else sb.style.display='none';
+  }
 
   gameState = STATE.playing;
-  mpMode = true;
 
-  // Send hello with brawler
   if(conn && conn.open){
-    conn.send({ t:'hello', brawler: myKey, name: (BRAWLERS[myKey]&&BRAWLERS[myKey].name)||'Player' });
+    conn.send({ t:'hello', brawler: myKey, name: (BRAWLERS[myKey]&&BRAWLERS[myKey].name)||'Player', coop: mpCoop, mode: gameMode });
   }
 }
 
 function handleMPData(data){
   if(!data || !data.t) return;
   if(data.t === 'hello'){
+    if(data.coop!=null) mpCoop = !!data.coop;
+    if(data.mode) gameMode = data.mode;
     if(remotePlayer && BRAWLERS[data.brawler]){
       remotePlayer.key = data.brawler;
       remotePlayer.b = BRAWLERS[data.brawler];
@@ -1983,7 +2347,15 @@ function handleMPData(data){
       remotePlayer.maxHp = BRAWLERS[data.brawler].maxHp;
       remotePlayer.hp = remotePlayer.maxHp;
       remotePlayer.size = BRAWLERS[data.brawler].size;
+      if(mpCoop) remotePlayer.team = 'blue';
     }
+  } else if(data.t === 'ballShoot' && ball){
+    ball.owner = null;
+    ball.shoot(data.a, data.p||14);
+  } else if(data.t === 'ballState' && ball){
+    ball.x=data.x; ball.y=data.y; ball.vx=data.vx; ball.vy=data.vy;
+    if(data.ownerId==='remote' && remotePlayer) ball.owner=remotePlayer;
+    else if(data.ownerId==='none') ball.owner=null;
   } else if(data.t === 'state' && remotePlayer){
     remotePlayer.x = data.x;
     remotePlayer.y = data.y;
@@ -2006,12 +2378,19 @@ function handleMPData(data){
 function sendMPState(){
   if(!mpMode || !conn || !conn.open || !player) return;
   var now = performance.now();
-  if(now - lastSend < 50) return; // 20Hz
+  if(now - lastSend < 50) return;
   lastSend = now;
   conn.send({
     t:'state', x:player.x, y:player.y, a:player.angle,
     hp:player.hp, alive:player.alive, vx:player.vx, vy:player.vy
   });
+  // Host authority on ball
+  if(isHost && ball){
+    conn.send({
+      t:'ballState', x:ball.x, y:ball.y, vx:ball.vx, vy:ball.vy,
+      ownerId: ball.owner===player ? 'host' : (ball.owner && ball.owner.isRemote ? 'remote' : 'none')
+    });
+  }
 }
 
 // Hook into shoot for MP
@@ -2028,6 +2407,33 @@ if(impBtn&&impFile){
 }
 // Auto-save periodically while in menu
 setInterval(function(){ if(gameState===STATE.menu||gameState===STATE.gameover) saveData(); }, 30000);
+
+
+(function setupBallShoot(){
+  function doBallShoot(){
+    if(!ball || !player || ball.owner!==player) return;
+    ball.shoot(player.angle, 15);
+    if(mpMode && conn && conn.open) try{ conn.send({t:'ballShoot', a:player.angle, p:15}); }catch(e){}
+  }
+  var bsb=document.getElementById('ballShootBtn');
+  if(bsb){
+    bsb.onclick=function(e){ e.preventDefault(); e.stopPropagation(); doBallShoot(); };
+    bsb.addEventListener('touchstart', function(e){ e.preventDefault(); e.stopPropagation(); doBallShoot(); }, {passive:false});
+    bsb.addEventListener('touchend', function(e){ e.preventDefault(); }, {passive:false});
+  }
+  // Double-tap right joystick area also shoots ball if holding
+  var jr=document.getElementById('joystickRight');
+  if(jr){
+    var lastTap=0;
+    jr.addEventListener('touchstart', function(e){
+      var now=Date.now();
+      if(now-lastTap<280 && ball && player && ball.owner===player){
+        doBallShoot();
+      }
+      lastTap=now;
+    }, {passive:true});
+  }
+})();
 
 loadSave();selectedBrawler=save.selected||'shelly';if(!save.unlocked.includes(selectedBrawler))selectedBrawler='shelly';renderBrawlerSelect();requestAnimationFrame(loop);
 </script>
