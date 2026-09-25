@@ -132,9 +132,22 @@ canvas{display:block;background:#1e2a3a;border-radius:8px;box-shadow:0 0 40px rg
 .matchmaking .spinner{width:44px;height:44px;border:4px solid rgba(255,255,255,.15);border-top-color:#00e5ff;border-radius:50%;animation:spin .9s linear infinite;margin:0 auto 12px}
 @keyframes spin{to{transform:rotate(360deg)}}
 #joystickLeft,#joystickRight{position:absolute;width:130px;height:130px;border-radius:50%;background:rgba(255,255,255,.12);border:3px solid rgba(255,255,255,.25);display:none;z-index:15;pointer-events:auto;touch-action:none}
-#joystickLeft{bottom:24px;left:20px}#joystickRight{bottom:24px;right:20px}
+#joystickLeft{bottom:28px;left:24px}
+#sideAbilities{position:absolute;right:28px;bottom:180px;display:none;flex-direction:column;gap:10px;z-index:16;pointer-events:auto}
+#sideAbilities .side-btn{width:56px;height:56px;border-radius:50%;border:3px solid rgba(255,255,255,.4);background:rgba(0,0,0,.55);color:#fff;font-weight:900;font-size:11px;display:flex;align-items:center;justify-content:center;text-align:center;line-height:1.15;touch-action:manipulation;box-shadow:0 4px 12px rgba(0,0,0,.35);font-family:inherit}
+#sideAbilities .side-btn.ready{border-color:#00e5ff;box-shadow:0 0 14px #00e5ff}
+#sideAbilities .side-btn.super-ready{border-color:#ffd700;box-shadow:0 0 16px #ffd700}
+#sideAbilities .side-btn.hyper-ready{border-color:#ff00ff;box-shadow:0 0 16px #ff00ff}
+#aimHint{position:absolute;bottom:175px;right:24px;width:140px;text-align:center;font-size:10px;opacity:.7;display:none;z-index:14;pointer-events:none}
+#joystickRight .joystick-knob{background:rgba(255,80,80,.55)!important;box-shadow:0 0 14px rgba(255,80,80,.45)!important}#joystickRight{bottom:28px;right:24px}
 .joystick-knob{position:absolute;width:56px;height:56px;border-radius:50%;background:rgba(255,255,255,.45);top:50%;left:50%;transform:translate(-50%,-50%);pointer-events:none;box-shadow:0 0 12px rgba(0,229,255,.4)}
-@media(max-width:900px),(pointer:coarse),(hover:none){#joystickLeft,#joystickRight{display:block}#abilityBar{bottom:170px}#hcBar{bottom:230px}}
+@media(max-width:900px),(pointer:coarse),(hover:none){
+#joystickLeft,#joystickRight{display:block}
+#sideAbilities{display:flex}
+#aimHint{display:block}
+#abilityBar{bottom:16px;opacity:.85}
+#hcBar{bottom:88px}
+}
 /* Ability buttons larger for touch */
 #abilityBar .ability{width:64px;height:64px;font-size:12px;pointer-events:auto;touch-action:manipulation}
 #ballShootBtn.ready{border-color:#fff!important;box-shadow:0 0 16px #fff;animation:ballPulse 0.8s ease infinite}
@@ -158,7 +171,7 @@ canvas{display:block;background:#1e2a3a;border-radius:8px;box-shadow:0 0 40px rg
 <div class="ability" id="gadgetBtn">GADGET<br><span style="font-size:9px">Q</span><div class="cd" id="gadgetCd"></div></div>
 <div class="ability" id="superBtn">SUPER<br><span style="font-size:9px">SPACE</span><div class="cd" id="superCd"></div></div>
 <div class="ability" id="hcBtn">HYPER<br><span style="font-size:9px">E</span><div class="cd" id="hcCd"></div></div>
-<div class="ability" id="ballShootBtn" style="display:none;border-color:#fff;background:rgba(255,255,255,0.2)">⚽ SHOOT<br><span style="font-size:9px">TAP</span></div>
+<div class="ability" id="ballShootBtn" style="display:none;border-color:#fff;background:rgba(255,255,255,0.2)">⚽ シュート<br><span style="font-size:9px">タップ</span></div>
 </div>
 </div>
 <div class="currency-bar" id="currencyBar">
@@ -289,6 +302,12 @@ canvas{display:block;background:#1e2a3a;border-radius:8px;box-shadow:0 0 40px rg
 </div>
 <div id="joystickLeft"><div class="joystick-knob" id="knobLeft"></div></div>
 <div id="joystickRight"><div class="joystick-knob" id="knobRight"></div></div>
+<div id="sideAbilities">
+  <button class="side-btn" id="sideHyper" type="button">HYPER<br>E</button>
+  <button class="side-btn" id="sideSuper" type="button">SUPER<br>ULT</button>
+  <button class="side-btn" id="sideGadget" type="button">GADGET<br>Q</button>
+</div>
+<div id="aimHint">エイム中 → 指を離して攻撃</div>
 </div>
 <script>
 const canvas=document.getElementById('gameCanvas'),ctx=canvas.getContext('2d');
@@ -567,13 +586,18 @@ window.addEventListener('keydown',e=>{keys[e.code]=true;if(['Space','KeyQ','KeyE
 window.addEventListener('keyup',e=>{keys[e.code]=false});
 canvas.addEventListener('mousemove',e=>{const r=canvas.getBoundingClientRect();mouse.x=(e.clientX-r.left)*(canvas.width/r.width);mouse.y=(e.clientY-r.top)*(canvas.height/r.height)});
 canvas.addEventListener('mousedown',()=>mouse.down=true);canvas.addEventListener('mouseup',()=>mouse.down=false);canvas.addEventListener('contextmenu',e=>e.preventDefault());
-let leftStick={active:false,dx:0,dy:0},rightStick={active:false,dx:0,dy:0,shooting:false};
+let leftStick={active:false,dx:0,dy:0};
+let rightStick={active:false,dx:0,dy:0,shooting:false,aiming:false,wasAiming:false,releaseFire:false,holdTime:0,startTime:0,lastAngle:0};
+// true = 本家寄り: エイム中は撃たず、指を離した瞬間に攻撃
+const RELEASE_TO_FIRE = true;
+
 function setupJoystick(el,knob,isLeft){
   const stick=isLeft?leftStick:rightStick;
   const onStart=e=>{
     e.preventDefault();e.stopPropagation();
     const t=e.changedTouches?e.changedTouches[0]:e;
     stick.active=true;
+    if(!isLeft){ stick.startTime=performance.now(); stick.holdTime=0; stick.releaseFire=false; stick.wasAiming=false; }
     updStick(t,el,knob,stick);
   };
   const onMove=e=>{
@@ -584,30 +608,51 @@ function setupJoystick(el,knob,isLeft){
   };
   const onEnd=e=>{
     e.preventDefault();
-    stick.active=false;stick.dx=0;stick.dy=0;
-    if(!isLeft)stick.shooting=false;
+    if(!isLeft && stick.active){
+      const mag = Math.hypot(stick.dx,stick.dy);
+      const wasAim = stick.aiming || mag>0.15;
+      stick.holdTime = performance.now() - (stick.startTime||performance.now());
+      // 離す直前の方向を保存（dx/dyを消す前に）
+      if(wasAim && mag>0.05){
+        stick.lastAngle = Math.atan2(stick.dy, stick.dx);
+      }
+      if(RELEASE_TO_FIRE && wasAim){
+        stick.releaseFire = true;
+        stick.wasAiming = true;
+      }
+      stick.shooting=false;
+      stick.aiming=false;
+    }
+    stick.active=false; stick.dx=0; stick.dy=0;
     knob.style.transform='translate(-50%,-50%)';
   };
   el.addEventListener('touchstart',onStart,{passive:false});
   el.addEventListener('touchmove',onMove,{passive:false});
   el.addEventListener('touchend',onEnd,{passive:false});
   el.addEventListener('touchcancel',onEnd,{passive:false});
-  // mouse fallback for testing
   el.addEventListener('mousedown',onStart);
   window.addEventListener('mousemove',e=>{if(stick.active)onMove(e)});
-  window.addEventListener('mouseup',onEnd);
+  window.addEventListener('mouseup',e=>{if(stick.active)onEnd(e)});
 }
 function updStick(t,el,knob,stick){
   const r=el.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2;
   let dx=(t.clientX||t.pageX)-cx, dy=(t.clientY||t.pageY)-cy;
-  const max=48,len=Math.hypot(dx,dy);
+  const max=52,len=Math.hypot(dx,dy);
   if(len>max){dx=dx/len*max;dy=dy/len*max}
-  stick.dx=dx/max;stick.dy=dy/max;
-  if(!el.id.includes('Left')) stick.shooting = len > 8; // auto fire when aiming
-  knob.style.transform=`translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+  stick.dx=dx/max; stick.dy=dy/max;
+  if(!el.id.includes('Left')){
+    stick.aiming = len > 8;
+    stick.shooting = RELEASE_TO_FIRE ? false : (len > 8);
+    if(len > 8){
+      stick.wasAiming = true;
+      stick.lastAngle = Math.atan2(dy, dx);
+    }
+  }
+  knob.style.transform='translate(calc(-50% + '+dx+'px), calc(-50% + '+dy+'px))';
 }
 setupJoystick(document.getElementById('joystickLeft'),document.getElementById('knobLeft'),true);
 setupJoystick(document.getElementById('joystickRight'),document.getElementById('knobRight'),false);
+
 
 // Ability buttons - tap friendly
 ['gadgetBtn','superBtn','hcBtn'].forEach(id=>{
@@ -650,14 +695,30 @@ if(this.hasSP){if(this.b.starPower.name.includes('ダメージ')||this.b.starPow
 get dmg(){let d=this.b.damage*(1+this.power*.12);if(this.hcActive)d*=this.b.hyper.mult;return d}
 get spd(){let s=this.b.speed*1.12*(1+this.power*.04);if(this.speedBoost>0)s*=1.45;if(this.hcActive)s*=1.12;if(this.dashAtk)s*=1.0;return s}
 takeDamage(amt,from){if(this.invuln>0||!this.alive||this.invisible)return;if(this.shield>0){this.shield-=amt;if(this.shield<0){amt=-this.shield;this.shield=0}else return}this.hp-=amt;this.invuln=.1;spawnP(this.x,this.y,this.color,4,2);if(this.hp<=0){this.hp=0;this.alive=false;spawnP(this.x,this.y,this.color,22,5);
-      if(gameMode==='knockout'&&typeof this.lives==='number'){
+      // Ball modes: always respawn after a few seconds
+      if(gameMode==='brawlball'||gameMode==='basket'||gameMode==='hockey'){
+        var self=this;
+        var delay = 2.5;
+        setTimeout(function(){
+          if(gameState!==STATE.playing) return;
+          if(ball && ball.owner===self) ball.owner=null;
+          self.alive=true;
+          self.hp=self.maxHp;
+          self.invuln=1.2;
+          self.x = self.team==='blue' ? (150+Math.random()*80) : (WORLD.width-150-Math.random()*80);
+          self.y = WORLD.height/2+(Math.random()-0.5)*220;
+          self.vx=0; self.vy=0;
+          spawnP(self.x,self.y,'#2ecc71',10,3);
+        }, delay*1000);
+      } else if(gameMode==='knockout'&&typeof this.lives==='number'){
         this.lives--;
         if(this.lives>0){
-          var self=this;
+          var self2=this;
           setTimeout(function(){
-            self.alive=true; self.hp=self.maxHp;
-            self.x = self.team==='blue'?200:WORLD.width-200;
-            self.y = WORLD.height/2+(Math.random()-0.5)*150;
+            if(gameState!==STATE.playing) return;
+            self2.alive=true; self2.hp=self2.maxHp; self2.invuln=1;
+            self2.x = self2.team==='blue'?200:WORLD.width-200;
+            self2.y = WORLD.height/2+(Math.random()-0.5)*150;
           },1500);
         }
       }
@@ -665,6 +726,12 @@ if(from&&from.isPlayer){kills++;from.superC=Math.min(from.b.superCharge,from.sup
 applyPoison(dps,dur){this.poisonDps=Math.max(this.poisonDps||0,dps);this.poisonT=Math.max(this.poisonT||0,dur)}
 applyBurn(dps,dur){this.burnDps=Math.max(this.burnDps||0,dps);this.burnT=Math.max(this.burnT||0,dur)}
 shoot(a){
+  // Holding ball? kick instead of firing weapon
+  if(this.isPlayer && ball && ball.owner===this){
+    ball.shoot(a, gameMode==='basket'?12:14);
+    if(mpMode && conn && conn.open) try{ conn.send({t:'ballShoot', a:a, p:14}); }catch(e){}
+    return;
+  }
   if(this.reload>0||!this.alive)return;
   this.reload=this.b.reload*(this.hcActive?0.55:1);
   const k=this.key, b=this.b, spd=b.bulletSpeed, rng=b.range;
@@ -847,6 +914,11 @@ if(this.isPlayer && gameState===STATE.playing){
     if(gBtn){ gBtn.className='ability'+(this.gadgetCd<=0?' ready':''); if(gCd) gCd.textContent=this.gadgetCd>0?this.gadgetCd.toFixed(1):''; }
     if(sBtn){ sBtn.className='ability'+(this.superC>=this.b.superCharge?' ready':''); if(sCd) sCd.textContent=this.superC>=this.b.superCharge?'READY':Math.floor(this.superC)+'/'+this.b.superCharge; }
     if(hBtn){ hBtn.className='ability'+(this.hcCharge>=100&&!this.hcActive?' ready':''); if(hCd) hCd.textContent=this.hcActive?'ON':(this.hcCharge>=100?'READY':Math.floor(this.hcCharge)+'%'); }
+    // Side buttons (mobile BS layout)
+    var sg=document.getElementById('sideGadget'), ss=document.getElementById('sideSuper'), sh=document.getElementById('sideHyper');
+    if(sg){ sg.className='side-btn'+(this.gadgetCd<=0?' ready':''); }
+    if(ss){ ss.className='side-btn'+(this.superC>=this.b.superCharge?' super-ready ready':''); ss.innerHTML=this.superC>=this.b.superCharge?'SUPER<br>READY':'SUPER<br>'+Math.floor(this.superC)+'/'+this.b.superCharge; }
+    if(sh){ sh.className='side-btn'+(this.hcCharge>=100&&!this.hcActive?' hyper-ready ready':''); sh.innerHTML=this.hcActive?'HYPER<br>ON':(this.hcCharge>=100?'HYPER<br>READY':'HYPER<br>'+Math.floor(this.hcCharge)+'%'); }
   }catch(e){}
 }}
 draw(cx,cy){if(!this.alive)return;if(this.invisible&&!this.isPlayer)return;const sx=this.x-cx,sy=this.y-cy;const al=this.invisible?.3:(this.invuln>0?.5+Math.sin(Date.now()/25)*.4:1);ctx.globalAlpha=al;
@@ -869,13 +941,24 @@ ctx.beginPath();ctx.ellipse(sx+1,sy+s*0.72,s*0.92,s*0.28,0,0,6.28);ctx.fillStyle
 // Power aura
 if(this.power>0){ctx.beginPath();ctx.arc(sx,drawY,s+5+this.power*1.1,0,6.28);ctx.fillStyle=`rgba(255,215,0,${0.07+this.power*0.02})`;ctx.fill()}
 // Attack trajectory preview (player only, brief)
-if(this.isPlayer && this.aimFlash>0){
-  const rng=this.b.range*0.9;
-  ctx.globalAlpha=this.aimFlash*2;
-  ctx.strokeStyle=this.color;ctx.lineWidth=2;ctx.setLineDash([6,6]);
+if(this.isPlayer && (this.aimFlash>0 || (typeof rightStick!=='undefined' && rightStick.aiming))){
+  const rng=this.b.range*0.95;
+  const alpha = rightStick.aiming ? 0.85 : Math.min(1, this.aimFlash*3);
+  ctx.globalAlpha=alpha;
+  // Wide translucent aim cone tip
+  ctx.strokeStyle=this.color;ctx.lineWidth=3;ctx.setLineDash([8,6]);
   ctx.beginPath();ctx.moveTo(sx,drawY);
-  ctx.lineTo(sx+Math.cos(this.angle)*rng*0.4, drawY+Math.sin(this.angle)*rng*0.4);
-  ctx.stroke();ctx.setLineDash([]);ctx.globalAlpha=1;
+  ctx.lineTo(sx+Math.cos(this.angle)*rng*0.55, drawY+Math.sin(this.angle)*rng*0.55);
+  ctx.stroke();
+  // solid short line near character
+  ctx.setLineDash([]);ctx.lineWidth=4;ctx.globalAlpha=alpha*0.9;
+  ctx.beginPath();ctx.moveTo(sx+Math.cos(this.angle)*(this.size+4), drawY+Math.sin(this.angle)*(this.size+4));
+  ctx.lineTo(sx+Math.cos(this.angle)*(this.size+28), drawY+Math.sin(this.angle)*(this.size+28));
+  ctx.stroke();
+  // end dot
+  ctx.beginPath();ctx.arc(sx+Math.cos(this.angle)*rng*0.55, drawY+Math.sin(this.angle)*rng*0.55, 5, 0, 6.28);
+  ctx.fillStyle=this.color;ctx.globalAlpha=alpha*0.7;ctx.fill();
+  ctx.setLineDash([]);ctx.globalAlpha=1;
 }
 if(this.hcActive){ctx.beginPath();ctx.arc(sx,drawY,s+13,0,6.28);ctx.fillStyle='rgba(255,0,255,0.2)';ctx.fill()}
 
@@ -1264,67 +1347,104 @@ draw(cx,cy){
 class Ball {
   constructor(x,y){
     this.x=x; this.y=y; this.vx=0; this.vy=0;
-    this.r=14; this.owner=null; this.alive=true;
+    this.r=16; this.owner=null; this.alive=true;
+    this.cooldown=0; // after shoot, can't pick up immediately
   }
   update(dt){
+    this.cooldown = Math.max(0, this.cooldown - dt);
+
+    // Held by player: stick in front
     if(this.owner && this.owner.alive){
-      this.x = this.owner.x + Math.cos(this.owner.angle)* (this.owner.size+16);
-      this.y = this.owner.y + Math.sin(this.owner.angle)* (this.owner.size+16);
-      this.vx = this.owner.vx; this.vy = this.owner.vy;
+      const o = this.owner;
+      const holdDist = o.size + 20;
+      this.x = o.x + Math.cos(o.angle) * holdDist;
+      this.y = o.y + Math.sin(o.angle) * holdDist;
+      this.vx = 0; this.vy = 0;
       return;
     }
     this.owner = null;
-    this.x += this.vx; this.y += this.vy;
-    this.vx *= 0.985; this.vy *= 0.985;
-    // bounce walls
-    if(this.x < 50){ this.x=50; this.vx*=-0.8; }
-    if(this.x > WORLD.width-50){ this.x=WORLD.width-50; this.vx*=-0.8; }
-    if(this.y < 50){ this.y=50; this.vy*=-0.8; }
-    if(this.y > WORLD.height-50){ this.y=WORLD.height-50; this.vy*=-0.8; }
-    // obstacles
+
+    // Physics
+    this.x += this.vx;
+    this.y += this.vy;
+    const friction = gameMode==='hockey' ? 0.992 : 0.978;
+    this.vx *= friction;
+    this.vy *= friction;
+    if(Math.hypot(this.vx,this.vy) < 0.15){ this.vx=0; this.vy=0; }
+
+    // Walls
+    if(this.x < 50+this.r){ this.x=50+this.r; this.vx=Math.abs(this.vx)*0.75; }
+    if(this.x > WORLD.width-50-this.r){ this.x=WORLD.width-50-this.r; this.vx=-Math.abs(this.vx)*0.75; }
+    if(this.y < 50+this.r){ this.y=50+this.r; this.vy=Math.abs(this.vy)*0.75; }
+    if(this.y > WORLD.height-50-this.r){ this.y=WORLD.height-50-this.r; this.vy=-Math.abs(this.vy)*0.75; }
+
+    // Obstacles
     for(const o of obstacles){
       if(o.type==='box'&&o.hp<=0) continue;
       if(circRect(this.x,this.y,this.r,o)){
         const cx=o.x+o.w/2, cy=o.y+o.h/2;
-        if(Math.abs(this.x-cx)>Math.abs(this.y-cy)) this.vx*=-0.85; else this.vy*=-0.85;
-        this.x += this.vx; this.y += this.vy;
+        if(Math.abs(this.x-cx)>Math.abs(this.y-cy)) this.vx*=-0.8; else this.vy*=-0.8;
+        this.x += this.vx*1.5; this.y += this.vy*1.5;
       }
     }
-    // pickup
+
+    // Pickup / kick interaction
+    if(this.cooldown > 0) return;
+    let nearest=null, nd=1e9;
     for(const c of characters){
       if(!c.alive) continue;
-      if(dist(this,c) < this.r+c.size){
-        // kick if moving into ball
-        const sp = Math.hypot(c.vx,c.vy);
-        if(sp > 1.5 && !this.owner){
-          this.vx = c.vx * 2.2 + Math.cos(c.angle)*4;
-          this.vy = c.vy * 2.2 + Math.sin(c.angle)*4;
-        } else if(sp < 1.2 && Math.hypot(this.vx,this.vy)<2){
-          this.owner = c;
-        }
+      const d = dist(this, c);
+      if(d < this.r + c.size + 8 && d < nd){ nd=d; nearest=c; }
+    }
+    if(nearest){
+      const sp = Math.hypot(nearest.vx, nearest.vy);
+      const ballSp = Math.hypot(this.vx, this.vy);
+      // Slow ball or standing nearby -> pick up
+      if(ballSp < 3.5){
+        this.owner = nearest;
+        this.vx=0; this.vy=0;
+      } else if(sp > 1.2){
+        // Running into moving ball -> deflect with some control
+        const ang = nearest.angle;
+        this.vx = Math.cos(ang)*Math.min(12, 4+sp*1.8);
+        this.vy = Math.sin(ang)*Math.min(12, 4+sp*1.8);
+        this.cooldown = 0.15;
       }
     }
   }
   shoot(ang, power){
     this.owner = null;
-    this.vx = Math.cos(ang)*power;
-    this.vy = Math.sin(ang)*power;
+    power = power || 15;
+    this.vx = Math.cos(ang) * power;
+    this.vy = Math.sin(ang) * power;
+    this.cooldown = 0.35; // can't instant re-pickup
+    spawnP(this.x, this.y, '#fff', 6, 3);
   }
   draw(cx,cy){
     const sx=this.x-cx, sy=this.y-cy;
-    ctx.beginPath(); ctx.arc(sx,sy,this.r+2,0,6.28); ctx.fillStyle='rgba(0,0,0,0.3)'; ctx.fill();
+    // shadow
+    ctx.beginPath(); ctx.ellipse(sx, sy+this.r*0.6, this.r*0.9, this.r*0.35, 0,0,6.28);
+    ctx.fillStyle='rgba(0,0,0,0.35)'; ctx.fill();
     if(gameMode==='hockey'){
       ctx.beginPath(); ctx.arc(sx,sy,this.r,0,6.28); ctx.fillStyle='#dfe6e9'; ctx.fill();
-      ctx.strokeStyle='#636e72'; ctx.lineWidth=2; ctx.stroke();
+      ctx.strokeStyle='#2d3436'; ctx.lineWidth=3; ctx.stroke();
+      ctx.beginPath(); ctx.arc(sx-3,sy-3,4,0,6.28); ctx.fillStyle='rgba(255,255,255,0.5)'; ctx.fill();
     } else if(gameMode==='basket'){
       ctx.beginPath(); ctx.arc(sx,sy,this.r,0,6.28); ctx.fillStyle='#e67e22'; ctx.fill();
-      ctx.strokeStyle='#fff'; ctx.lineWidth=1.5;
-      ctx.beginPath(); ctx.arc(sx,sy,this.r*0.6,0,6.28); ctx.stroke();
+      ctx.strokeStyle='#fff'; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.arc(sx,sy,this.r*0.55,0,6.28); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(sx,sy-this.r); ctx.lineTo(sx,sy+this.r); ctx.stroke();
     } else {
-      // soccer
       ctx.beginPath(); ctx.arc(sx,sy,this.r,0,6.28); ctx.fillStyle='#fff'; ctx.fill();
-      ctx.strokeStyle='#222'; ctx.lineWidth=2; ctx.stroke();
-      ctx.beginPath(); ctx.arc(sx,sy,5,0,6.28); ctx.fillStyle='#222'; ctx.fill();
+      ctx.strokeStyle='#1a1a1a'; ctx.lineWidth=2.5; ctx.stroke();
+      ctx.fillStyle='#1a1a1a';
+      ctx.beginPath(); ctx.arc(sx,sy,4,0,6.28); ctx.fill();
+    }
+    // Owner ring
+    if(this.owner){
+      ctx.beginPath(); ctx.arc(sx,sy,this.r+5,0,6.28);
+      ctx.strokeStyle=this.owner.team==='blue'?'#3498db':'#e74c3c';
+      ctx.lineWidth=2; ctx.stroke();
     }
   }
 }
@@ -1566,6 +1686,8 @@ function startGame(){
     var hud = document.getElementById('hud'); if(hud) hud.style.display = 'flex';
     var hc = document.getElementById('hcBar'); if(hc) hc.style.display = 'block';
     var ab = document.getElementById('abilityBar'); if(ab) ab.style.display = 'flex';
+    var sa=document.getElementById('sideAbilities'); if(sa) sa.style.display=''; // CSS media shows on touch
+
     var cur = document.getElementById('currencyBar'); if(cur) cur.style.display = 'none';
     // CRITICAL: reset joystick inline styles so mobile CSS can show them
     var jl = document.getElementById('joystickLeft');
@@ -1689,9 +1811,50 @@ if(mx||my){
   const maxSp=player.spd*2.85;
   if(sp>maxSp){player.vx=(player.vx/sp)*maxSp;player.vy=(player.vy/sp)*maxSp}
 }
-if(rightStick.active&&(rightStick.dx||rightStick.dy))player.angle=Math.atan2(rightStick.dy,rightStick.dx);else player.angle=Math.atan2(mouse.y+camera.y-player.y,mouse.x+camera.x-player.x);
-if((mouse.down||rightStick.shooting)&&player.reload<=0)player.shoot(player.angle);
-if(keys.Space){if(player.useSuper())keys.Space=false}if(keys.KeyQ){player.useGadget();keys.KeyQ=false}if(keys.KeyE){player.useHyper();keys.KeyE=false}
+// === 自由方向エイム ===
+var touchAiming = rightStick.active && (Math.hypot(rightStick.dx,rightStick.dy)>0.08 || rightStick.aiming);
+if(touchAiming){
+  player.angle = Math.atan2(rightStick.dy, rightStick.dx);
+  rightStick.lastAngle = player.angle;
+  player.aimFlash = 0.25;
+} else if(rightStick.releaseFire && typeof rightStick.lastAngle==='number'){
+  // 離した直後は保存した角度を使う（マウスで上書きしない）
+  player.angle = rightStick.lastAngle;
+} else if(mouse.down || !('ontouchstart' in window)){
+  // PC: マウス方向
+  player.angle = Math.atan2(mouse.y+camera.y-player.y, mouse.x+camera.x-player.x);
+}
+// 指を離した瞬間に、エイムした方向へ攻撃
+if(rightStick.releaseFire){
+  rightStick.releaseFire = false;
+  var fireAng = (typeof rightStick.lastAngle==='number') ? rightStick.lastAngle : player.angle;
+  player.angle = fireAng;
+  if(rightStick.holdTime>450 && player.superC>=player.b.superCharge){
+    player.useSuper();
+  } else if(ball && ball.owner===player){
+    ball.shoot(fireAng, gameMode==='basket'?13:16);
+  } else {
+    // reload中でも1発は出す（リリース撃ち優先）
+    var savedReload = player.reload;
+    player.reload = 0;
+    player.shoot(fireAng);
+    if(savedReload>0 && player.reload===0) player.reload = Math.min(savedReload, player.b.reload*0.5);
+  }
+  rightStick.holdTime = 0;
+  player.aimFlash = 0.15;
+}
+// PCマウス連射
+if(mouse.down && !touchAiming && player.reload<=0 && !(ball&&ball.owner===player)){
+  player.angle = Math.atan2(mouse.y+camera.y-player.y, mouse.x+camera.x-player.x);
+  player.shoot(player.angle);
+}
+if(rightStick.shooting && player.reload<=0){
+  player.angle = Math.atan2(rightStick.dy, rightStick.dx);
+  player.shoot(player.angle);
+}
+if(keys.Space){if(player.useSuper())keys.Space=false}
+if(keys.KeyQ){player.useGadget();keys.KeyQ=false}
+if(keys.KeyE){player.useHyper();keys.KeyE=false}
   // Multiplayer sync
   if(mpMode && player && player.alive){
     sendMPState();
@@ -1703,18 +1866,28 @@ if(bullets.length>120) bullets.splice(0, bullets.length-80);
 for(let i=particles.length-1;i>=0;i--){particles[i].update(dt);if(particles[i].life<=0)particles.splice(i,1)}
 for(const p of powerCubes)p.update(dt);
 if(ball){ try{ ball.update(dt); checkGoals(); }catch(e){} }
-// Ball shoot: SPACE or touch button
+// Ball control UI + shoot
 if(ball && player){
   var hold = (ball.owner===player);
   var bsb = document.getElementById('ballShootBtn');
   if(bsb){
-    bsb.style.display = hold ? 'flex' : 'none';
+    bsb.style.display = (gameMode==='brawlball'||gameMode==='basket'||gameMode==='hockey') ? (hold?'flex':'none') : 'none';
     if(hold) bsb.classList.add('ready'); else bsb.classList.remove('ready');
   }
+  // SPACE = power shot
   if(hold && keys.Space){
-    ball.shoot(player.angle, 15);
+    ball.shoot(player.angle, gameMode==='basket'?13:16);
     keys.Space=false;
-    if(mpMode && conn && conn.open) try{ conn.send({t:'ballShoot', a:player.angle, p:15}); }catch(e){}
+    if(mpMode && conn && conn.open) try{ conn.send({t:'ballShoot', a:player.angle, p:16}); }catch(e){}
+  }
+  // Mouse click / right stick fire while holding = shoot (not weapon)
+  if(hold && (mouse.down || (typeof rightStick!=='undefined' && rightStick.shooting))){
+    if(!player._ballShotLock){
+      player._ballShotLock = true;
+      ball.shoot(player.angle, gameMode==='basket'?12:14);
+      if(mpMode && conn && conn.open) try{ conn.send({t:'ballShoot', a:player.angle, p:14}); }catch(e){}
+      setTimeout(function(){ if(player) player._ballShotLock=false; }, 400);
+    }
   }
 }
 if(gameMode!=='showdown'||teamMode){
@@ -1748,7 +1921,12 @@ if(gameState===STATE.playing && !window._endGameDone){
   let shouldEnd = false;
   let won = false;
   if(player && !player.alive){
-    shouldEnd = true; won = false;
+    // Ball modes: death is not game over (respawn)
+    if(gameMode==='brawlball'||gameMode==='basket'||gameMode==='hockey'){
+      // wait for respawn
+    } else {
+      shouldEnd = true; won = false;
+    }
   } else if(player && player.alive){
     if(mpMode && mpCoop){
       const enemies = characters.filter(c=>c.alive && c.team==='red');
@@ -2412,8 +2590,9 @@ setInterval(function(){ if(gameState===STATE.menu||gameState===STATE.gameover) s
 (function setupBallShoot(){
   function doBallShoot(){
     if(!ball || !player || ball.owner!==player) return;
-    ball.shoot(player.angle, 15);
-    if(mpMode && conn && conn.open) try{ conn.send({t:'ballShoot', a:player.angle, p:15}); }catch(e){}
+    var pow = gameMode==='basket' ? 13 : 16;
+    ball.shoot(player.angle, pow);
+    if(mpMode && conn && conn.open) try{ conn.send({t:'ballShoot', a:player.angle, p:pow}); }catch(e){}
   }
   var bsb=document.getElementById('ballShootBtn');
   if(bsb){
@@ -2433,6 +2612,20 @@ setInterval(function(){ if(gameState===STATE.menu||gameState===STATE.gameover) s
       lastTap=now;
     }, {passive:true});
   }
+})();
+
+
+(function setupSideAbilities(){
+  function bindSide(id, fn){
+    var el=document.getElementById(id);
+    if(!el) return;
+    var fire=function(e){ if(e){ e.preventDefault(); e.stopPropagation(); } if(player&&player.alive) fn(); };
+    el.onclick=fire;
+    el.addEventListener('touchstart', fire, {passive:false});
+  }
+  bindSide('sideGadget', function(){ player.useGadget(); });
+  bindSide('sideSuper', function(){ player.useSuper(); });
+  bindSide('sideHyper', function(){ player.useHyper(); });
 })();
 
 loadSave();selectedBrawler=save.selected||'shelly';if(!save.unlocked.includes(selectedBrawler))selectedBrawler='shelly';renderBrawlerSelect();requestAnimationFrame(loop);
